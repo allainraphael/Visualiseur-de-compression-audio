@@ -214,57 +214,52 @@ function stopSource() {
   if (analyserNode) { analyserNode.disconnect(); analyserNode=null; }
 }
 
-function playSource() {
-  stopSource();
+function playSource(){
+  if(!buffer) return;
+  if(sourceNode) sourceNode.stop();
 
   sourceNode = audioContext.createBufferSource();
   sourceNode.buffer = buffer;
   sourceNode.loop = loopEnabled;
 
+  // Crée le compresseur et applique les réglages
+  compressorNode = audioContext.createDynamicsCompressor();
+  applyCompressorSettings();
+
+  // Crée le gainNode
+  gainNode = audioContext.createGain();
+
+  // Compensation automatique si make-up = 0 dB
+  let autoGain = 1;
+  if(!bypassEnabled && parseFloat(makeupSlider.value) == 0){
+      const reduction = compressorNode.reduction; // valeur négative en dB
+      autoGain = Math.pow(10, -reduction/20);
+  }
+
+  // Appliquer gain final (autoGain * make-up)
+  gainNode.gain.value = autoGain * Math.pow(10, parseFloat(makeupSlider.value)/20);
+
+  // Crée l'analyser
   analyserNode = audioContext.createAnalyser();
   analyserNode.fftSize = 2048;
 
+  // Connexion selon bypass
+  sourceNode.disconnect();
   if(bypassEnabled){
-    sourceNode.connect(analyserNode);
+      sourceNode.connect(gainNode);
   } else {
-    compressorNode = audioContext.createDynamicsCompressor();
-    applyCompressorSettings();
-
-    gainNode = audioContext.createGain();
-
-// Compensation automatique si make-up = 0 dB
-let autoGain = 1;
-if(!bypassEnabled && parseFloat(makeupSlider.value) == 0){
-    const reduction = compressorNode.reduction; // valeur négative en dB
-    autoGain = Math.pow(10, -reduction/20);
-}
-
-// Appliquer gain final (autoGain * make-up)
-gainNode.gain.value = autoGain * Math.pow(10, parseFloat(makeupSlider.value)/20);
-
-    if(bypassEnabled){
-    sourceNode.connect(gainNode);
-} else {
-    sourceNode.connect(compressorNode);
-    compressorNode.connect(gainNode);
-}
-gainNode.connect(analyserNode);
-analyserNode.connect(audioContext.destination);
-
+      sourceNode.connect(compressorNode);
+      compressorNode.connect(gainNode);
   }
-
+  gainNode.connect(analyserNode);
   analyserNode.connect(audioContext.destination);
 
-  sourceNode.start();
+  // Démarre la lecture
+  sourceNode.start(0);
+  isPlaying=true;
+  playPauseBtn.textContent="⏸ Pause";
 
-  sourceNode.onended = () => {
-    if(!loopEnabled){
-      stopSource();
-      isPlaying=false;
-      playPauseBtn.textContent="▶️ Lecture";
-    }
-  };
-
+  // Mise à jour visuelle
   drawGRRealtime();
   redraw();
   drawCompGraph();
