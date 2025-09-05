@@ -8,6 +8,8 @@
     canvas { border: 1px solid #555; margin: 10px 0; display: block; background: #111; }
     .controls { margin: 10px 0; }
     .controls label { display: inline-block; width: 100px; }
+    button { margin: 5px; padding: 5px 10px; }
+    #grMeter { width: 50px; height: 150px; background: #111; border: 1px solid #555; display: block; margin-top: 10px; }
   </style>
 </head>
 <body>
@@ -36,6 +38,8 @@
     <span id="makeupVal">0 dB</span><br><br>
 
     <button id="playPause">▶️ Lecture</button>
+    <button id="loopBtn">🔁 Boucle ON</button>
+    <button id="abBtn">🔀 Mode A/B (A: Bypass)</button>
   </div>
 
   <h3>Zoom & Navigation</h3>
@@ -52,12 +56,19 @@
   <h3>Compressé</h3>
   <canvas id="canvasCompressed" width="900" height="150"></canvas>
 
+  <h3>Gain Reduction (GR Meter)</h3>
+  <canvas id="grMeter"></canvas>
+
 <script>
 let audioContext, buffer, source, compressor, gainNode;
 let isPlaying = false, startTime = 0, pauseTime = 0;
+let loopEnabled = true;
+let modeAB = "A"; // A = original, B = compressé
 
 const fileInput = document.getElementById("fileInput");
 const playPauseBtn = document.getElementById("playPause");
+const loopBtn = document.getElementById("loopBtn");
+const abBtn = document.getElementById("abBtn");
 
 const threshSlider = document.getElementById("threshold");
 const ratioSlider = document.getElementById("ratio");
@@ -70,13 +81,18 @@ const posSlider = document.getElementById("position");
 
 const canvasOriginal = document.getElementById("canvasOriginal");
 const canvasCompressed = document.getElementById("canvasCompressed");
+const grCanvas = document.getElementById("grMeter");
 const ctxOrig = canvasOriginal.getContext("2d");
 const ctxComp = canvasCompressed.getContext("2d");
+const ctxGR = grCanvas.getContext("2d");
 
 let samples, compressedSamples;
+let analyser, dataArray;
 
 fileInput.addEventListener("change", handleFile);
 playPauseBtn.addEventListener("click", togglePlay);
+loopBtn.addEventListener("click", toggleLoop);
+abBtn.addEventListener("click", toggleAB);
 
 [threshSlider, ratioSlider, attackSlider, releaseSlider, makeupSlider].forEach(ctrl => {
   ctrl.addEventListener("input", updateCompressorAndRedraw);
@@ -96,6 +112,7 @@ async function handleFile(e){
   samples = buffer.getChannelData(0); // mono pour affichage
 
   await processCompressed();
+  setupAnalyser();
   redraw();
 }
 
@@ -123,6 +140,13 @@ async function processCompressed(){
   compressedSamples = rendered.getChannelData(0);
 }
 
+function setupAnalyser(){
+  if(!audioContext) return;
+  analyser = audioContext.createAnalyser();
+  analyser.fftSize = 2048;
+  dataArray = new Float32Array(analyser.fftSize);
+}
+
 function togglePlay(){
   if(!buffer) return;
   if(!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
@@ -133,9 +157,22 @@ function togglePlay(){
     playPauseBtn.textContent = "▶️ Lecture";
     isPlaying = false;
   } else {
-    source = audioContext.createBufferSource();
+    playCurrentMode();
+    drawGR();
+  }
+}
+
+function playCurrentMode(){
+  source = audioContext.createBufferSource();
+
+  if(modeAB === "A"){ // Bypass
     source.buffer = buffer;
-    source.loop = true; // ✅ boucle activée par défaut
+    source.loop = loopEnabled;
+    source.connect(audioContext.destination);
+    analyser.disconnect();
+  } else { // Compressé
+    source.buffer = buffer;
+    source.loop = loopEnabled;
 
     compressor = audioContext.createDynamicsCompressor();
     compressor.threshold.value = parseFloat(threshSlider.value);
@@ -150,10 +187,29 @@ function togglePlay(){
     compressor.connect(gainNode);
     gainNode.connect(audioContext.destination);
 
-    source.start(0, pauseTime);
-    startTime = audioContext.currentTime - pauseTime;
-    playPauseBtn.textContent = "⏸ Pause";
-    isPlaying = true;
+    // Connecter analyser pour GR meter
+    gainNode.connect(analyser);
+  }
+
+  source.start(0, pauseTime);
+  startTime = audioContext.currentTime - pauseTime;
+  playPauseBtn.textContent = "⏸ Pause";
+  isPlaying = true;
+}
+
+function toggleLoop(){
+  loopEnabled = !loopEnabled;
+  loopBtn.textContent = loopEnabled ? "🔁 Boucle ON" : "➡️ Boucle OFF";
+  if(source) source.loop = loopEnabled;
+}
+
+function toggleAB(){
+  modeAB = (modeAB === "A") ? "B" : "A";
+  abBtn.textContent = (modeAB === "A") ? "🔀 Mode A/B (A: Bypass)" : "🔀 Mode A/B (B: Compressé)";
+
+  if(isPlaying){
+    source.stop();
+    playCurrentMode();
   }
 }
 
@@ -178,7 +234,6 @@ function redraw(){
   drawWaveform(ctxComp, compressedSamples, zoom, pos, canvasCompressed, "#ff8844");
 }
 
-// ✅ version min/max pour waveform claire
 function drawWaveform(ctx, data, zoom, pos, canvas, color){
   ctx.clearRect(0,0,canvas.width,canvas.height);
   if(!data) return;
@@ -186,7 +241,7 @@ function drawWaveform(ctx, data, zoom, pos, canvas, color){
   const segmentLength = Math.floor(data.length/zoom);
   const start = Math.floor(pos * (data.length - segmentLength));
   const end = Math.min(start+segmentLength, data.length);
-  const step = Math.floor((end-start)/canvas.width);
+  const step = Math.max(1, Math.floor((end-start)/canvas.width));
 
   const amp = canvas.height/2;
   ctx.beginPath();
@@ -205,6 +260,32 @@ function drawWaveform(ctx, data, zoom, pos, canvas, color){
 
   ctx.strokeStyle = color;
   ctx.stroke();
+}
+
+// Draw Gain Reduction meter
+function drawGR(){
+  if(!compressor || !isPlaying) return;
+
+  requestAnimationFrame(drawGR);
+
+  analyser.getFloatTimeDomainData(dataArray);
+  let maxReduction = 0;
+
+  // Approximation de la réduction en dB
+  // Plus le signal sort du compresseur par rapport à l'entrée
+  for(let i=0; i<dataArray.length; i++){
+    const input = samples[i] || 0;
+    const output = compressedSamples[i] || 0;
+    const reduction = 20*Math.log10(Math.max(Math.abs(output)/Math.max(Math.abs(input),0.00001),0.0001));
+    if(reduction < maxReduction) maxReduction = reduction;
+  }
+
+  const gr = Math.abs(maxReduction); // en dB positif
+  const height = grCanvas.height;
+  ctxGR.clearRect(0,0,grCanvas.width,grCanvas.height);
+  ctxGR.fillStyle = "#ff0000";
+  const h = Math.min(height, (gr/60)*height);
+  ctxGR.fillRect(0, height-h, grCanvas.width, h);
 }
 </script>
 </body>
