@@ -1,388 +1,402 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="fr">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Visualiseur de Compression Audio</title>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Visualiseur - Forme d'onde complète & Compression</title>
 <style>
   :root{
-    --bg:#0f1115; --panel:#171a21; --accent:#4facfe; --text:#e6e6e6; --muted:#9aa4ad;
+    --bg:#0f1115; --panel:#16181c; --accent:#4facfe; --muted:#9aa4ad; --text:#e6eef8;
   }
   *{box-sizing:border-box}
-  body{margin:0;background:var(--bg);color:var(--text);font:14px/1.4 system-ui,Segoe UI,Roboto,Helvetica,Arial}
-  header{padding:18px 20px;text-align:center;border-bottom:1px solid #222730}
-  h1{margin:0;font-size:20px;font-weight:700;letter-spacing:.2px}
-  .container{max-width:1100px;margin:0 auto;padding:16px}
-  .panel{background:var(--panel);border:1px solid #222730;border-radius:14px;padding:16px}
-  .row{display:flex;flex-wrap:wrap;gap:12px;align-items:center}
-  .row > *{flex:0 0 auto}
-  input[type="file"]{display:block}
-  .btn{padding:8px 12px;border:1px solid #2a3140;background:#1c212b;color:var(--text);border-radius:10px;cursor:pointer}
-  .btn:hover{border-color:#3a4458}
-  .btn.primary{background:var(--accent);color:#081018;border:0}
-  .btn.toggle.active{background:#28a745;border-color:#28a745;color:#fff}
-  .knob{display:flex;flex-direction:column;gap:6px;min-width:160px}
-  .knob label{font-size:12px;color:var(--muted)}
-  .knob .val{font-variant-numeric:tabular-nums;color:#cfe6ff}
-  input[type="range"]{width:180px}
-  input[type="number"]{width:90px;height:32px;padding:6px;border-radius:8px;border:1px solid #2a3140;background:#0f131a;color:var(--text)}
-  .canvas-wrap{margin-top:14px}
-  canvas{width:100%;height:360px;background:#000;border-radius:14px;display:block}
-  .legend{display:flex;gap:16px;align-items:center;margin-top:8px;color:var(--muted)}
+  body{margin:0;font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial;background:var(--bg);color:var(--text)}
+  header{padding:16px;text-align:center;border-bottom:1px solid #11151a}
+  h1{margin:0;font-size:18px}
+  .wrap{max-width:1100px;margin:18px auto;padding:16px}
+  .panel{background:var(--panel);border-radius:12px;padding:12px;margin-bottom:12px;border:1px solid #131518}
+  .row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+  .controls .col{min-width:160px}
+  label{display:block;font-size:12px;color:var(--muted);margin-bottom:6px}
+  input[type="range"]{width:220px}
+  input[type="file"]{color:var(--text)}
+  button{background:#1b2128;border:1px solid #232a33;color:var(--text);padding:8px 12px;border-radius:8px;cursor:pointer}
+  button.primary{background:var(--accent);color:#06111c;border:0}
+  .small{font-size:13px;color:var(--muted)}
+  #canvas{width:100%;height:320px;background:#000;border-radius:8px;display:block}
+  .legend{display:flex;gap:14px;align-items:center;margin-top:8px;font-size:13px;color:var(--muted)}
   .dot{width:10px;height:10px;border-radius:50%}
-  .dot.pre{background:#b5bdc5}
-  .dot.post{background:var(--accent)}
-  .tips{color:#8fa1b5;margin-top:10px;font-size:12px}
+  .dot.orig{background:#b5bdc5}
+  .dot.comp{background:var(--accent)}
+  .status{margin-left:auto;font-size:13px;color:var(--muted)}
+  .footer{font-size:13px;color:var(--muted);margin-top:6px}
 </style>
 </head>
 <body>
 <header>
-  <h1>Visualiseur de Compression Audio — Threshold / Ratio / Attack / Release / Makeup</h1>
+  <h1>Visualiseur : forme d'onde complète & compression (Offline)</h1>
 </header>
 
-<div class="container">
-  <!-- Contrôles principaux -->
-  <div class="panel" style="margin-bottom:14px">
-    <div class="row">
-      <input class="btn" type="file" id="file" accept="audio/*" />
-      <button class="btn" id="play">▶️ Lecture</button>
-      <button class="btn" id="pause">⏸️ Pause</button>
-      <button class="btn" id="stop">⏹️ Stop</button>
-      <button class="btn toggle active" id="loop">🔁 Boucle ON</button>
-      <button class="btn toggle" id="bypass">🚫 Bypass</button>
-      <div class="knob">
-        <label>Volume sortie</label>
-        <input type="range" id="volume" min="0" max="2" step="0.01" value="1" />
-      </div>
+<div class="wrap">
+  <div class="panel controls">
+    <div class="row" style="align-items:center">
+      <input type="file" id="file" accept="audio/*">
+      <button id="play" class="primary">▶️ Lecture</button>
+      <button id="pause">⏸️ Pause</button>
+      <button id="stop">⏹️ Stop</button>
+      <label class="small" style="margin:0 8px"> <input type="checkbox" id="bypass"> Bypass (écouter original)</label>
+      <div class="status" id="status">Aucun fichier chargé</div>
     </div>
   </div>
 
-  <!-- Paramètres Compresseur -->
   <div class="panel">
     <div class="row">
-      <div class="knob">
-        <label>Threshold (dBFS) <span class="val" id="v-thresh">-12 dB</span></label>
-        <input type="range" id="thresh" min="-60" max="0" step="1" value="-12" />
+      <div class="col">
+        <label>Threshold (dB) <span id="lab-thresh" class="small"></span></label>
+        <input type="range" id="thresh" min="-60" max="0" step="1" value="-12">
       </div>
-      <div class="knob">
-        <label>Ratio <span class="val" id="v-ratio">4:1</span></label>
-        <input type="range" id="ratio" min="1" max="20" step="0.5" value="4" />
+      <div class="col">
+        <label>Ratio <span id="lab-ratio" class="small"></span></label>
+        <input type="range" id="ratio" min="1" max="20" step="0.5" value="4">
       </div>
-      <div class="knob">
-        <label>Attack (s) <span class="val" id="v-attack">0.01 s</span></label>
-        <input type="range" id="attack" min="0.001" max="1.0" step="0.001" value="0.01" />
+      <div class="col">
+        <label>Attack (s) <span id="lab-attack" class="small"></span></label>
+        <input type="range" id="attack" min="0.001" max="0.5" step="0.001" value="0.01">
       </div>
-      <div class="knob">
-        <label>Release (s) <span class="val" id="v-release">0.25 s</span></label>
-        <input type="range" id="release" min="0.01" max="1.5" step="0.01" value="0.25" />
+      <div class="col">
+        <label>Release (s) <span id="lab-release" class="small"></span></label>
+        <input type="range" id="release" min="0.01" max="1.5" step="0.01" value="0.25">
       </div>
-      <div class="knob">
-        <label>Makeup (dB) <span class="val" id="v-makeup">0 dB</span></label>
-        <input type="range" id="makeup" min="0" max="24" step="0.5" value="0" />
-      </div>
-      <div class="knob">
-        <label>Knee (dB) <span class="val" id="v-knee">30 dB</span></label>
-        <input type="range" id="knee" min="0" max="40" step="1" value="30" />
+      <div class="col">
+        <label>Makeup (dB) <span id="lab-makeup" class="small"></span></label>
+        <input type="range" id="makeup" min="-6" max="24" step="0.5" value="0">
       </div>
     </div>
+    <div class="footer">Après modification des paramètres la forme d'onde compressée est recalculée (offline) — patience quelques centaines de ms selon la longueur du fichier.</div>
   </div>
 
-  <!-- Visualisation -->
-  <div class="panel canvas-wrap">
+  <div class="panel">
     <canvas id="canvas"></canvas>
     <div class="legend">
-      <div class="dot pre"></div> <span>Entrée (avant compresseur)</span>
-      <div class="dot post"></div> <span>Sortie (après compresseur + makeup)</span>
+      <div class="dot orig"></div><div>Original (non compressé) — partie haute</div>
+      <div class="dot comp"></div><div>Compressé + Makeup — partie basse</div>
+      <div class="status" id="timeLabel"></div>
     </div>
-    <div class="tips">Astuce : charge un passage dynamique (voix/batterie) pour voir la forme d’onde se « tasser » avec un ratio élevé et un threshold bas, puis compense avec le Makeup.</div>
   </div>
 </div>
 
 <script>
-(() => {
-  // === ÉTAT GLOBAL AUDIO ===
-  let audioCtx = null;
-  let buffer = null;
-  let source = null;
+(async ()=>{
 
-  // Nœuds
-  let preAnalyser = null;   // Tap AVANT compresseur
-  let compressor = null;
-  let makeupGain = null;    // dB -> lin
-  let postAnalyser = null;  // Tap APRÈS compresseur + makeup
-  let outGain = null;       // volume sortie
-  let destination = null;
+// Utilitaires
+const dBtoGain = db => Math.pow(10, db/20);
+const gainTodB = g => 20*Math.log10(Math.max(g,1e-12));
 
-  // Lecture
-  let isPlaying = false;
-  let isLooping = true;
-  let startTime = 0;
-  let pauseOffset = 0;
+const fileEl = document.getElementById('file');
+const playBtn = document.getElementById('play');
+const pauseBtn = document.getElementById('pause');
+const stopBtn = document.getElementById('stop');
+const bypassChk = document.getElementById('bypass');
+const status = document.getElementById('status');
 
-  // Bypass
-  let isBypassed = false;
+const threshEl = document.getElementById('thresh');
+const ratioEl = document.getElementById('ratio');
+const attackEl = document.getElementById('attack');
+const releaseEl = document.getElementById('release');
+const makeupEl = document.getElementById('makeup');
 
-  // Canvas
-  const canvas = document.getElementById('canvas');
-  const ctx2d  = canvas.getContext('2d');
+const labThresh = document.getElementById('lab-thresh');
+const labRatio  = document.getElementById('lab-ratio');
+const labAttack = document.getElementById('lab-attack');
+const labRelease= document.getElementById('lab-release');
+const labMakeup = document.getElementById('lab-makeup');
 
-  function resizeCanvas(){
-    canvas.width  = canvas.clientWidth  * window.devicePixelRatio;
-    canvas.height = canvas.clientHeight * window.devicePixelRatio;
-    ctx2d.setTransform(window.devicePixelRatio,0,0,window.devicePixelRatio,0,0);
-  }
-  window.addEventListener('resize', resizeCanvas);
-  resizeCanvas();
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
 
-  // === UI Elements ===
-  const fileEl   = document.getElementById('file');
-  const playEl   = document.getElementById('play');
-  const pauseEl  = document.getElementById('pause');
-  const stopEl   = document.getElementById('stop');
-  const loopEl   = document.getElementById('loop');
-  const bypassEl = document.getElementById('bypass');
-  const volumeEl = document.getElementById('volume');
+let audioCtx = null;            // pour playback
+let offlineCtx = null;          // pour rendu compressé
+let originalBuffer = null;      // AudioBuffer chargé
+let compressedBuffer = null;    // AudioBuffer rendu offline
+let sourceNode = null;          // pour lecture
+let isPlaying = false;
+let playStartAt = 0;            // audioCtx.currentTime when started
+let playOffset = 0;             // seconds offset when paused
 
-  const threshEl = document.getElementById('thresh');
-  const ratioEl  = document.getElementById('ratio');
-  const attackEl = document.getElementById('attack');
-  const releaseEl= document.getElementById('release');
-  const makeupEl = document.getElementById('makeup');
-  const kneeEl   = document.getElementById('knee');
+// Resize canvas to device pixels
+function resizeCanvas(){
+  canvas.width = canvas.clientWidth * window.devicePixelRatio;
+  canvas.height= canvas.clientHeight* window.devicePixelRatio;
+  ctx.setTransform(window.devicePixelRatio,0,0,window.devicePixelRatio,0,0);
+  if(originalBuffer) renderWaveforms(); 
+}
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
 
-  const vThresh  = document.getElementById('v-thresh');
-  const vRatio   = document.getElementById('v-ratio');
-  const vAttack  = document.getElementById('v-attack');
-  const vRelease = document.getElementById('v-release');
-  const vMakeup  = document.getElementById('v-makeup');
-  const vKnee    = document.getElementById('v-knee');
-
-  // === Utils ===
-  const dbToGain = db => Math.pow(10, db/20);
-
-  function ensureAudioGraph(){
-    if (audioCtx) return;
-    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-
-    // Nœuds communs
-    compressor  = audioCtx.createDynamicsCompressor();
-    compressor.threshold.value = parseFloat(threshEl.value);
-    compressor.ratio.value     = parseFloat(ratioEl.value);
-    compressor.attack.value    = parseFloat(attackEl.value);
-    compressor.release.value   = parseFloat(releaseEl.value);
-    compressor.knee.value      = parseFloat(kneeEl.value);
-
-    makeupGain  = audioCtx.createGain();
-    makeupGain.gain.value = dbToGain(parseFloat(makeupEl.value));
-
-    outGain     = audioCtx.createGain();
-    outGain.gain.value = parseFloat(volumeEl.value);
-
-    preAnalyser  = audioCtx.createAnalyser();
-    preAnalyser.fftSize = 2048;
-    postAnalyser = audioCtx.createAnalyser();
-    postAnalyser.fftSize = 2048;
-
-    destination = audioCtx.destination;
-
-    // La source sera branchée dans play()
-  }
-
-  async function loadFile(file){
-    ensureAudioGraph();
-    const arrayBuffer = await file.arrayBuffer();
-    buffer = await audioCtx.decodeAudioData(arrayBuffer);
-    pauseOffset = 0;
-    startTime = 0;
-  }
-
-  function connectGraph(){
-    // Déconnecte ancienne source
-    if (source){
-      try{ source.disconnect(); }catch{}
-    }
-    source = audioCtx.createBufferSource();
-    source.buffer = buffer;
-    source.loop = isLooping;
-
-    // Tap avant compresseur
-    // Split : source -> preAnalyser (via un gain unity) + chemin principal
-    const splitGain = audioCtx.createGain();
-    splitGain.gain.value = 1;
-
-    source.connect(splitGain);
-    splitGain.connect(preAnalyser);
-
-    // Chemin principal
-    if (isBypassed){
-      // Bypass : source -> makeupGain (toujours appliqué) -> outGain
-      splitGain.connect(makeupGain);
-    } else {
-      splitGain.connect(compressor);
-      compressor.connect(makeupGain);
-    }
-    makeupGain.connect(postAnalyser);
-    postAnalyser.connect(outGain);
-    outGain.connect(destination);
-  }
-
-  function play(){
-    if (!buffer) return;
-    ensureAudioGraph();
-
-    // Si déjà une source en cours, on stoppe proprement
-    if (source){
-      try{ source.stop(); }catch{}
-    }
-    connectGraph();
-
-    startTime = audioCtx.currentTime - pauseOffset;
-    source.start(0, pauseOffset);
-    isPlaying = true;
-  }
-
-  function pause(){
-    if (!isPlaying) return;
-    try{ source.stop(); }catch{}
-    pauseOffset = audioCtx.currentTime - startTime;
-    isPlaying = false;
-  }
-
-  function stop(){
-    if (source){
-      try{ source.stop(); }catch{}
-    }
-    isPlaying = false;
-    pauseOffset = 0;
-  }
-
-  // === UI bindings ===
-  fileEl.addEventListener('change', async (e)=>{
-    const f = e.target.files?.[0];
-    if (!f) return;
-    await loadFile(f);
-    play(); // auto lecture après chargement
-  });
-
-  playEl.addEventListener('click', ()=> play());
-  pauseEl.addEventListener('click', ()=> pause());
-  stopEl.addEventListener('click', ()=> stop());
-
-  loopEl.addEventListener('click', ()=>{
-    isLooping = !isLooping;
-    loopEl.classList.toggle('active', isLooping);
-    loopEl.textContent = isLooping ? '🔁 Boucle ON' : '🔁 Boucle OFF';
-    if (source) source.loop = isLooping;
-  });
-
-  bypassEl.addEventListener('click', ()=>{
-    isBypassed = !isBypassed;
-    bypassEl.classList.toggle('active', isBypassed);
-    // Reconnecter le graphe pour prendre en compte le bypass instantanément
-    if (buffer && audioCtx){
-      const wasPlaying = isPlaying;
-      const currentPos = wasPlaying ? (audioCtx.currentTime - startTime) : pauseOffset;
-      if (source){ try{ source.stop(); }catch{} }
-      connectGraph();
-      startTime = audioCtx.currentTime - currentPos;
-      pauseOffset = currentPos;
-      source.start(0, currentPos);
-      isPlaying = true;
-    }
-  });
-
-  volumeEl.addEventListener('input', ()=>{
-    ensureAudioGraph();
-    outGain.gain.value = parseFloat(volumeEl.value);
-  });
-
-  function updateCompressorParams(){
-    if (!audioCtx) return;
-    compressor.threshold.setTargetAtTime(parseFloat(threshEl.value),  audioCtx.currentTime, 0.01);
-    compressor.ratio.setTargetAtTime(parseFloat(ratioEl.value),       audioCtx.currentTime, 0.01);
-    compressor.attack.setTargetAtTime(parseFloat(attackEl.value),     audioCtx.currentTime, 0.01);
-    compressor.release.setTargetAtTime(parseFloat(releaseEl.value),   audioCtx.currentTime, 0.01);
-    compressor.knee.setTargetAtTime(parseFloat(kneeEl.value),         audioCtx.currentTime, 0.01);
-    makeupGain.gain.setTargetAtTime(dbToGain(parseFloat(makeupEl.value)), audioCtx.currentTime, 0.01);
-  }
-
-  function refreshLabels(){
-    vThresh.textContent  = `${threshEl.value} dB`;
-    vRatio.textContent   = `${ratioEl.value}:1`;
-    vAttack.textContent  = `${Number(attackEl.value).toFixed(3)} s`;
-    vRelease.textContent = `${Number(releaseEl.value).toFixed(2)} s`;
-    vMakeup.textContent  = `${makeupEl.value} dB`;
-    vKnee.textContent    = `${kneeEl.value} dB`;
-  }
-
-  [threshEl,ratioEl,attackEl,releaseEl,makeupEl,kneeEl].forEach(el=>{
-    el.addEventListener('input', ()=>{
-      refreshLabels();
-      updateCompressorParams();
-    });
-  });
+// labels init
+function refreshLabels(){
+  labThresh.textContent = `${threshEl.value} dB`;
+  labRatio.textContent  = `${ratioEl.value}:1`;
+  labAttack.textContent = `${(+attackEl.value).toFixed(3)} s`;
+  labRelease.textContent= `${(+releaseEl.value).toFixed(2)} s`;
+  labMakeup.textContent = `${makeupEl.value} dB`;
+}
+[threshEl,ratioEl,attackEl,releaseEl,makeupEl].forEach(el=>el.addEventListener('input', ()=>{
   refreshLabels();
+  // recalcule offline seulement si un buffer est chargé
+  if(originalBuffer) renderCompressedOffline();
+}));
+refreshLabels();
 
-  // === VISUALISATION WAVEFORM (Avant/Après) ===
-  const preData  = new Uint8Array(1024);
-  const postData = new Uint8Array(1024);
+// Load file
+fileEl.addEventListener('change', async (e)=>{
+  const f = e.target.files && e.target.files[0];
+  if(!f) return;
+  status.textContent = `Chargement ${f.name}...`;
+  if(!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  const ab = await f.arrayBuffer();
+  originalBuffer = await audioCtx.decodeAudioData(ab);
+  status.textContent = `Fichier chargé — durée ${originalBuffer.duration.toFixed(2)} s`;
+  playOffset = 0;
+  // draw original and compute compressed offline
+  renderWaveforms();
+  await renderCompressedOffline(); // build compressedBuffer and redraw
+});
 
-  function draw(){
-    // fond
-    const w = canvas.clientWidth;
-    const h = canvas.clientHeight;
-    ctx2d.clearRect(0,0,w,h);
-    ctx2d.fillStyle = '#000';
-    ctx2d.fillRect(0,0,w,h);
+// Draw waveforms: original (top) & compressed (bottom)
+function renderWaveforms(){
+  const w = canvas.clientWidth;
+  const h = canvas.clientHeight;
+  ctx.clearRect(0,0,w,h);
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0,0,w,h);
 
-    // si graph prêt
-    if (preAnalyser && postAnalyser){
-      preAnalyser.getByteTimeDomainData(preData);
-      postAnalyser.getByteTimeDomainData(postData);
-
-      // Axes zéro
-      ctx2d.strokeStyle = '#1e232b';
-      ctx2d.lineWidth = 1;
-      ctx2d.beginPath();
-      ctx2d.moveTo(0, h/2);
-      ctx2d.lineTo(w, h/2);
-      ctx2d.stroke();
-
-      // trace pré (gris)
-      ctx2d.beginPath();
-      ctx2d.lineWidth = 1.5;
-      ctx2d.strokeStyle = '#b5bdc5';
-      for (let i=0;i<preData.length;i++){
-        const x = (i / (preData.length-1)) * w;
-        const v = (preData[i] - 128) / 128; // -1..+1
-        const y = h/2 + v * (h*0.45);
-        if (i===0) ctx2d.moveTo(x,y); else ctx2d.lineTo(x,y);
-      }
-      ctx2d.stroke();
-
-      // trace post (couleur)
-      ctx2d.beginPath();
-      ctx2d.lineWidth = 2;
-      ctx2d.strokeStyle = '#4facfe';
-      for (let i=0;i<postData.length;i++){
-        const x = (i / (postData.length-1)) * w;
-        const v = (postData[i] - 128) / 128;
-        const y = h/2 + v * (h*0.45);
-        if (i===0) ctx2d.moveTo(x,y); else ctx2d.lineTo(x,y);
-      }
-      ctx2d.stroke();
-
-      // Légendes coins
-      ctx2d.fillStyle = '#9aa4ad';
-      ctx2d.font = '12px system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial';
-      ctx2d.fillText('Pré (entrée)', 12, 18);
-      ctx2d.fillStyle = '#cfe6ff';
-      ctx2d.fillText('Post (sortie compressée)', 12, 34);
-    }
-
-    requestAnimationFrame(draw);
+  if(!originalBuffer) {
+    ctx.fillStyle = '#9aa4ad';
+    ctx.font = '14px system-ui';
+    ctx.fillText('Charge un fichier audio pour voir la forme d\'onde', 12, 28);
+    return;
   }
-  requestAnimationFrame(draw);
+
+  // Prepare sample arrays (mono mix)
+  function getChannelDataMixed(buf){
+    const ch = Math.min(2, buf.numberOfChannels);
+    const len = buf.length;
+    const out = new Float32Array(len);
+    if(ch === 1){
+      out.set(buf.getChannelData(0));
+      return out;
+    }
+    const a = buf.getChannelData(0);
+    const b = buf.getChannelData(1);
+    for(let i=0;i<len;i++){
+      out[i] = 0.5*(a[i] + b[i]);
+    }
+    return out;
+  }
+
+  const origData = getChannelDataMixed(originalBuffer);
+  const compData = compressedBuffer ? getChannelDataMixed(compressedBuffer) : null;
+
+  // downsample to canvas width using peak per bucket for a DAW-like render
+  const px = Math.max(1, Math.floor(w)); // number of samples across
+  function buildEnvelope(data){
+    const len = data.length;
+    const samplesPerBucket = Math.max(1, Math.floor(len/px));
+    const env = new Float32Array(px);
+    for(let i=0;i<px;i++){
+      const start = i*samplesPerBucket;
+      const end = Math.min(len, start + samplesPerBucket);
+      let min=1, max=-1;
+      for(let j=start;j<end;j++){
+        const v = data[j];
+        if(v < min) min = v;
+        if(v > max) max = v;
+      }
+      // choose peak-to-peak amplitude for visual clarity
+      env[i] = (Math.abs(min) > Math.abs(max)) ? min : max;
+    }
+    return env;
+  }
+
+  const envOrig = buildEnvelope(origData);
+  const envComp = compData ? buildEnvelope(compData) : null;
+
+  // draw axes/time ticks
+  ctx.fillStyle = '#1a1f25';
+  ctx.fillRect(0,0,w,h);
+
+  // draw midline separation
+  const half = Math.floor(h/2);
+  ctx.strokeStyle = '#0f1317';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(0, half);
+  ctx.lineTo(w, half);
+  ctx.stroke();
+
+  // time ticks every n seconds
+  const duration = originalBuffer.duration;
+  const approxTicks = Math.max(2, Math.floor(w/120));
+  const step = Math.max(0.5, duration/approxTicks);
+  ctx.fillStyle = '#78909a';
+  ctx.font = '11px system-ui';
+  for(let t=0;t<=duration; t+=step){
+    const x = (t/duration) * w;
+    ctx.fillText(`${t.toFixed(1)}s`, x+2, h-6);
+  }
+
+  // draw original (top half) - center at quarter height (0..1 -> top)
+  const paddingY = 6;
+  ctx.beginPath();
+  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = '#b5bdc5'; // grey waveform
+  for(let i=0;i<envOrig.length;i++){
+    const x = (i/envOrig.length)*w;
+    const v = envOrig[i];
+    const y = (half/2) + (1 - v) * (half/2) - paddingY; // map -1..1 to top quarter
+    if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  // label original
+  ctx.fillStyle = '#9aa4ad';
+  ctx.font = '12px system-ui';
+  ctx.fillText('Original', 8, 18);
+
+  // draw compressed (bottom half) - invert mapping
+  if(envComp){
+    ctx.beginPath();
+    ctx.lineWidth = 1.6;
+    ctx.strokeStyle = '#4facfe'; // accent
+    for(let i=0;i<envComp.length;i++){
+      const x = (i/envComp.length)*w;
+      const v = envComp[i];
+      const y = half + (half/2) + ( - v ) * (half/2) + paddingY; // map -1..1 to bottom quarter
+      if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+    }
+    ctx.stroke();
+    ctx.fillStyle = '#cfe6ff';
+    ctx.fillText('Compressé + Makeup', 8, half + 18);
+  } else {
+    ctx.fillStyle = '#32444e';
+    ctx.fillText('Compressé (pas encore calculé)', 8, half + 18);
+  }
+
+  // draw border and time ruler top
+  ctx.strokeStyle = '#0b1013';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(0,0,w,h);
+}
+
+// Offline render to produce compressedBuffer
+let currentRenderToken = 0; // cancel stale renders by token check
+async function renderCompressedOffline(){
+  if(!originalBuffer) return;
+  const myToken = ++currentRenderToken;
+  status.textContent = 'Rendu offline du signal compressé…';
+  // create offline context with same sampleRate and channel count
+  const sr = originalBuffer.sampleRate;
+  const channels = originalBuffer.numberOfChannels;
+  const length = originalBuffer.length;
+  const offline = new OfflineAudioContext(channels, length, sr);
+
+  // build source buffer
+  const src = offline.createBufferSource();
+  src.buffer = originalBuffer;
+  // compressor node
+  const comp = offline.createDynamicsCompressor();
+  comp.threshold.value = Number(threshEl.value);
+  comp.ratio.value     = Number(ratioEl.value);
+  comp.attack.value    = Number(attackEl.value);
+  comp.release.value   = Number(releaseEl.value);
+  comp.knee.value      = 30; // fixed knee for predictable result (could expose)
+
+  // makeup as gain node (dB)
+  const makeupNode = offline.createGain();
+  makeupNode.gain.value = dBtoGain(Number(makeupEl.value));
+
+  // chain: src -> comp -> makeup -> destination
+  src.connect(comp);
+  comp.connect(makeupNode);
+  makeupNode.connect(offline.destination);
+
+  src.start(0);
+  try{
+    const rendered = await offline.startRendering(); // returns AudioBuffer
+    // if a newer render started meanwhile, discard this result
+    if(myToken !== currentRenderToken) return;
+    compressedBuffer = rendered;
+    status.textContent = `Rendu compressé prêt — durée ${compressedBuffer.duration.toFixed(2)} s`;
+    renderWaveforms();
+  }catch(err){
+    console.error('Offline rendering failed', err);
+    status.textContent = 'Erreur de rendu offline';
+  }
+}
+
+// Playback: play compressedBuffer (or original if bypass)
+function stopPlayback(){
+  if(sourceNode){
+    try{ sourceNode.stop(); }catch(e){}
+    sourceNode.disconnect();
+    sourceNode = null;
+  }
+  isPlaying = false;
+}
+
+function startPlayback(){
+  if(!originalBuffer) return;
+  if(!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  stopPlayback();
+
+  const toPlay = bypassChk.checked ? originalBuffer : (compressedBuffer || originalBuffer);
+  sourceNode = audioCtx.createBufferSource();
+  sourceNode.buffer = toPlay;
+  sourceNode.loop = false;
+  // output gain
+  const out = audioCtx.createGain();
+  out.gain.value = 1.0;
+  sourceNode.connect(out).connect(audioCtx.destination);
+  const offset = playOffset % toPlay.duration;
+  sourceNode.start(0, offset);
+  playStartAt = audioCtx.currentTime - offset;
+  isPlaying = true;
+
+  // when end
+  sourceNode.onended = ()=>{
+    isPlaying = false;
+    playOffset = 0;
+  };
+}
+
+// UI playback bindings
+playBtn.addEventListener('click', ()=>{
+  if(isPlaying){
+    // ignore if playing
+    return;
+  } else {
+    startPlayback();
+  }
+});
+pauseBtn.addEventListener('click', ()=>{
+  if(!isPlaying) return;
+  // pause by stopping and storing offset
+  const toPlay = bypassChk.checked ? originalBuffer : (compressedBuffer || originalBuffer);
+  playOffset = audioCtx ? (audioCtx.currentTime - playStartAt) : 0;
+  stopPlayback();
+});
+stopBtn.addEventListener('click', ()=>{
+  stopPlayback();
+  playOffset = 0;
+});
+
+// initial: nothing loaded
+// Prevent blocking UI: renderCompressedOffline only after user adjusts param (already set)
+// All parameter changes trigger re-render; we already call renderCompressedOffline after file load and on param input
+
+// ensure user interaction for audio autoplay policy: resume on first play
+document.addEventListener('click', ()=>{ if(audioCtx && audioCtx.state === 'suspended') audioCtx.resume(); }, {once:true});
+
 })();
 </script>
 </body>
