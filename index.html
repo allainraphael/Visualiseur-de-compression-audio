@@ -124,11 +124,13 @@ canvas {
 </div>
 
 <script>
-let audioContext, buffer, sourceNode, compressorNode, gainNode, analyserNode;
+let audioContext, buffer, sourceNode, compressorNode, analyserNode;
 let isPlaying = false, loopEnabled = true;
 let samples;
 
-// DOM
+// State pour compression temps réel
+let compState = { env:0 };
+
 const fileInput = document.getElementById("fileInput");
 const playPauseBtn = document.getElementById("playPause");
 const loopBtn = document.getElementById("loopBtn");
@@ -169,11 +171,11 @@ async function handleFile(e){
   threshSlider.value=0; ratioSlider.value=1;
   attackSlider.value=0; releaseSlider.value=0; makeupSlider.value=0;
   updateCompressorValuesDisplay();
+  compState.env = 0;
 
   const arrayBuffer = await file.arrayBuffer();
   buffer = await audioContext.decodeAudioData(arrayBuffer);
-
-  samples = buffer.getChannelData(0).slice(); // copie
+  samples = buffer.getChannelData(0).slice();
 
   drawWaveform(ctxOrig, samples, 1,0,canvasOriginal,"#44ccff");
   redraw();
@@ -222,12 +224,12 @@ function applyCompressorSettings(){
   compressorNode.ratio.value = parseFloat(ratioSlider.value);
   compressorNode.attack.value = parseFloat(attackSlider.value);
   compressorNode.release.value = parseFloat(releaseSlider.value);
-  // Make-up gain neutralisé
 }
 
 function updateCompressor(){
   updateCompressorValuesDisplay();
   applyCompressorSettings();
+  compState.env = 0;
   redraw();
   drawCompGraph();
 }
@@ -263,6 +265,7 @@ function drawWaveform(ctx,data,zoom,pos,canvas,color,isCompressed=false){
 
   const amp = canvas.height/2;
   ctx.beginPath();
+  let state = {env:0}; // reset attack/release pour waveform compressée
   for(let i=0;i<canvas.width;i++){
     const segStart = start + i*step;
     let min=1,max=-1;
@@ -271,7 +274,7 @@ function drawWaveform(ctx,data,zoom,pos,canvas,color,isCompressed=false){
       if(idx>=totalLength) break;
       let s = data[idx];
       if(isCompressed){
-        s = compressSample(s);
+        s = compressSampleRealtime(s,state);
       }
       if(s<min) min=s;
       if(s>max) max=s;
@@ -291,12 +294,27 @@ function drawWaveform(ctx,data,zoom,pos,canvas,color,isCompressed=false){
   }
 }
 
-function compressSample(sample){
-  let threshold = parseFloat(threshSlider.value)/60;
-  let ratio = parseFloat(ratioSlider.value);
-  if(sample > threshold) sample = threshold + (sample-threshold)/ratio;
-  else if(sample < -threshold) sample = -threshold + (sample+threshold)/ratio;
-  return sample;
+function compressSampleRealtime(sample,state){
+    const threshold = parseFloat(threshSlider.value); // dB
+    const ratio = parseFloat(ratioSlider.value);
+    const attack = parseFloat(attackSlider.value);
+    const release = parseFloat(releaseSlider.value);
+
+    const eps = 1e-8;
+    let dbSample = 20*Math.log10(Math.abs(sample)+eps);
+
+    let gainDb = 0;
+    if(dbSample > threshold){
+        gainDb = threshold + (dbSample-threshold)/ratio - dbSample;
+    }
+
+    const coeff = (gainDb < state.env) 
+                  ? Math.exp(-1/(audioContext.sampleRate*attack || 1e-3))
+                  : Math.exp(-1/(audioContext.sampleRate*release || 1e-3));
+    state.env = state.env*coeff + gainDb*(1-coeff);
+
+    const linearGain = Math.pow(10,state.env/20);
+    return sample*linearGain;
 }
 
 function drawCompGraph(){
