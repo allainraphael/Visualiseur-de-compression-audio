@@ -226,8 +226,10 @@ function togglePlay(){
 
 function playSource(){
   if(!buffer) return;
-  if(sourceNode) sourceNode.stop();
-
+  if(sourceNode){
+    try{ sourceNode.stop(); } catch(e){}
+    sourceNode.disconnect();
+  }
   sourceNode = audioContext.createBufferSource();
   sourceNode.buffer = buffer;
   sourceNode.loop = loopEnabled;
@@ -241,23 +243,21 @@ function playSource(){
   analyserNode = audioContext.createAnalyser();
   analyserNode.fftSize = 2048;
 
-  sourceNode.disconnect();
   if(bypassEnabled){
-      sourceNode.connect(gainNode);
+    // 🔹 Bypass : original → analyser → destination
+    sourceNode.connect(analyserNode);
+    analyserNode.connect(audioContext.destination);
   } else {
-      sourceNode.connect(compressorNode);
-      compressorNode.connect(gainNode);
+    // 🔹 Normal : original → comp → makeup → analyser → destination
+    sourceNode.connect(compressorNode);
+    compressorNode.connect(gainNode);
+    gainNode.connect(analyserNode);
+    analyserNode.connect(audioContext.destination);
   }
-  gainNode.connect(analyserNode);
-  analyserNode.connect(audioContext.destination);
 
   sourceNode.start(0);
-  isPlaying=true;
-  playPauseBtn.textContent="⏸ Pause";
-
-  drawGRRealtime();
-  redraw();
-  drawCompGraph();
+  isPlaying = true;
+  startGRMeter();
 }
 
 function toggleBypass(){
