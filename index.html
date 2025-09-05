@@ -124,10 +124,8 @@ canvas {
 </div>
 
 <script>
-let audioContext, buffer, sourceNode, compressorNode;
+let audioContext, buffer, sourceNode, compressorNode, gainNode, analyserNode;
 let isPlaying = false, loopEnabled = true;
-let analyserNode;
-
 let samples;
 
 // DOM
@@ -167,7 +165,7 @@ async function handleFile(e){
   if(!file) return;
   if(!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
 
-  // Réinitialiser les paramètres
+  // Réinitialiser paramètres
   threshSlider.value=0; ratioSlider.value=1;
   attackSlider.value=0; releaseSlider.value=0; makeupSlider.value=0;
   updateCompressorValuesDisplay();
@@ -175,10 +173,10 @@ async function handleFile(e){
   const arrayBuffer = await file.arrayBuffer();
   buffer = await audioContext.decodeAudioData(arrayBuffer);
 
-  samples = buffer.getChannelData(0);
+  samples = buffer.getChannelData(0).slice(); // copie
 
   drawWaveform(ctxOrig, samples, 1,0,canvasOriginal,"#44ccff");
-  redraw(); // met à jour compressé
+  redraw();
   updateCompressor();
   if(isPlaying) playSource();
 }
@@ -195,6 +193,8 @@ function togglePlay(){
 
 function playSource(){
   if(!buffer) return;
+  if(sourceNode) sourceNode.stop();
+
   sourceNode = audioContext.createBufferSource();
   sourceNode.buffer = buffer;
   sourceNode.loop = loopEnabled;
@@ -222,7 +222,7 @@ function applyCompressorSettings(){
   compressorNode.ratio.value = parseFloat(ratioSlider.value);
   compressorNode.attack.value = parseFloat(attackSlider.value);
   compressorNode.release.value = parseFloat(releaseSlider.value);
-  // Make-up gain désactivé
+  // Make-up gain neutralisé
 }
 
 function updateCompressor(){
@@ -247,7 +247,7 @@ function redraw(){
   document.getElementById("posVal").textContent=Math.round(pos*100)+"%";
 
   drawWaveform(ctxOrig, samples, zoom, pos, canvasOriginal,"#44ccff");
-  drawWaveform(ctxComp, samples, zoom, pos, canvasCompressed,"#ff8844", true); // compressé approximatif
+  drawWaveform(ctxComp, samples, zoom, pos, canvasCompressed,"#ff8844", true);
 }
 
 function drawWaveform(ctx,data,zoom,pos,canvas,color,isCompressed=false){
@@ -257,7 +257,7 @@ function drawWaveform(ctx,data,zoom,pos,canvas,color,isCompressed=false){
   const totalLength = data.length;
   const segmentLength = Math.floor(totalLength/zoom);
   let start = Math.floor(pos*(totalLength - segmentLength));
-  if(start<0) start=0;
+  start = Math.max(0, Math.min(start, totalLength-1));
   let end = Math.min(start+segmentLength, totalLength);
   const step = Math.max(1, Math.floor((end-start)/canvas.width));
 
@@ -294,11 +294,8 @@ function drawWaveform(ctx,data,zoom,pos,canvas,color,isCompressed=false){
 function compressSample(sample){
   let threshold = parseFloat(threshSlider.value)/60;
   let ratio = parseFloat(ratioSlider.value);
-  if(sample > threshold){
-    sample = threshold + (sample-threshold)/ratio;
-  } else if(sample < -threshold){
-    sample = -threshold + (sample+threshold)/ratio;
-  }
+  if(sample > threshold) sample = threshold + (sample-threshold)/ratio;
+  else if(sample < -threshold) sample = -threshold + (sample+threshold)/ratio;
   return sample;
 }
 
