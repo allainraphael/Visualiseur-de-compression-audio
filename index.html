@@ -46,14 +46,14 @@ canvas {
   gap: 10px;
   margin-bottom: 10px;
 }
+.flex-graph {
+  display: flex;
+  align-items: flex-start;
+}
 #grMeter {
   width: 20px !important;
   height: 280px !important;
   margin-left: 10px;
-}
-.flex-graph {
-  display: flex;
-  align-items: flex-start;
 }
 </style>
 </head>
@@ -323,6 +323,25 @@ function drawCombinedWaveform(ctx, data, zoom, pos, canvas){
   }
   ctx.strokeStyle="#ff8844";
   ctx.stroke();
+
+  // Réduction de gain (GR)
+  ctx.beginPath();
+  for(let i=0;i<canvas.width;i++){
+    const segStart = start + i*step;
+    let maxReduction = 0;
+    for(let j=0;j<step;j++){
+      let idx = segStart+j;
+      if(idx>=totalLength) break;
+      const s = data[idx];
+      const gainDb = calcGainReduction(s);
+      if(gainDb < maxReduction) maxReduction = gainDb;
+    }
+    const y = amp + maxReduction/60*amp; // sommet du canvas = 0 dB reduction
+    if(i===0) ctx.moveTo(i,y); else ctx.lineTo(i,y);
+  }
+  ctx.strokeStyle="rgba(255,0,0,0.5)";
+  ctx.lineWidth=2;
+  ctx.stroke();
 }
 
 function compressSampleRealtime(sample,state){
@@ -346,6 +365,14 @@ function compressSampleRealtime(sample,state){
 
     const linearGain = Math.pow(10,state.env/20);
     return sample*linearGain;
+}
+
+function calcGainReduction(sample){
+    const threshold = parseFloat(threshSlider.value);
+    const ratio = parseFloat(ratioSlider.value);
+    let dbSample = 20*Math.log10(Math.abs(sample)+1e-8);
+    if(dbSample <= threshold) return 0;
+    return threshold + (dbSample-threshold)/ratio - dbSample;
 }
 
 function drawCompGraph(){
@@ -379,17 +406,19 @@ function drawGRRealtime(){
   requestAnimationFrame(drawGRRealtime);
   ctxGR.clearRect(0,0,grCanvas.width,grCanvas.height);
   if(!compressorNode) return;
-  let reduction = compressorNode.reduction ? -compressorNode.reduction : 0;
-  const h = (reduction/60)*grCanvas.height;
-  ctxGR.fillStyle="#ff0000";
-  ctxGR.fillRect(0,grCanvas.height-h,grCanvas.width,h);
+  let reduction = compressorNode.reduction ? compressorNode.reduction : 0;
+  let height = grCanvas.height;
+  let y = height/2 - (reduction/60)*(height/2);
+  ctxGR.fillStyle="red";
+  ctxGR.fillRect(0,y,grCanvas.width,height-y);
 }
 
 function toggleLoop(){
-  loopEnabled=!loopEnabled;
-  loopBtn.textContent=loopEnabled?"🔁 Boucle ON":"➡️ Boucle OFF";
-  if(sourceNode) sourceNode.loop=loopEnabled;
+  loopEnabled = !loopEnabled;
+  loopBtn.textContent = loopEnabled ? "🔁 Boucle ON":"🔁 Boucle OFF";
+  if(sourceNode) sourceNode.loop = loopEnabled;
 }
 </script>
+
 </body>
 </html>
