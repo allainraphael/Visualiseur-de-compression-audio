@@ -180,6 +180,7 @@ async function handleFile(e){
   drawWaveform(ctxOrig, samples, 1,0,canvasOriginal,"#44ccff");
   redraw(); // met à jour compressé
   updateCompressor();
+  if(isPlaying) playSource();
 }
 
 function togglePlay(){
@@ -193,14 +194,12 @@ function togglePlay(){
 }
 
 function playSource(){
+  if(!buffer) return;
   sourceNode = audioContext.createBufferSource();
   sourceNode.buffer = buffer;
   sourceNode.loop = loopEnabled;
 
   compressorNode = audioContext.createDynamicsCompressor();
-
-  // Désactiver make-up automatique
-  // makeupNode n'est plus utilisé
   applyCompressorSettings();
 
   analyserNode = audioContext.createAnalyser();
@@ -223,6 +222,7 @@ function applyCompressorSettings(){
   compressorNode.ratio.value = parseFloat(ratioSlider.value);
   compressorNode.attack.value = parseFloat(attackSlider.value);
   compressorNode.release.value = parseFloat(releaseSlider.value);
+  // Make-up gain désactivé
 }
 
 function updateCompressor(){
@@ -252,29 +252,36 @@ function redraw(){
 
 function drawWaveform(ctx,data,zoom,pos,canvas,color,isCompressed=false){
   ctx.clearRect(0,0,canvas.width,canvas.height);
-  if(!data) return;
-  const segmentLength = Math.floor(data.length/zoom);
-  const start = Math.floor(pos*(data.length-segmentLength));
-  const end = Math.min(start+segmentLength, data.length);
+  if(!data || data.length===0) return;
+
+  const totalLength = data.length;
+  const segmentLength = Math.floor(totalLength/zoom);
+  let start = Math.floor(pos*(totalLength - segmentLength));
+  if(start<0) start=0;
+  let end = Math.min(start+segmentLength, totalLength);
   const step = Math.max(1, Math.floor((end-start)/canvas.width));
+
   const amp = canvas.height/2;
   ctx.beginPath();
   for(let i=0;i<canvas.width;i++){
-    const segStart=start+i*step;
+    const segStart = start + i*step;
     let min=1,max=-1;
     for(let j=0;j<step;j++){
-      let s=data[segStart+j]||0;
+      let idx = segStart+j;
+      if(idx>=totalLength) break;
+      let s = data[idx];
       if(isCompressed){
         s = compressSample(s);
       }
       if(s<min) min=s;
       if(s>max) max=s;
     }
-    ctx.moveTo(i,amp+min*amp);
-    ctx.lineTo(i,amp+max*amp);
+    ctx.moveTo(i, amp+min*amp);
+    ctx.lineTo(i, amp+max*amp);
   }
   ctx.strokeStyle=color;
   ctx.stroke();
+
   ctx.fillStyle="#888";
   ctx.font="12px Arial";
   for(let t=0;t<=10;t++){
@@ -285,7 +292,7 @@ function drawWaveform(ctx,data,zoom,pos,canvas,color,isCompressed=false){
 }
 
 function compressSample(sample){
-  let threshold = parseFloat(threshSlider.value)/60; // normaliser
+  let threshold = parseFloat(threshSlider.value)/60;
   let ratio = parseFloat(ratioSlider.value);
   if(sample > threshold){
     sample = threshold + (sample-threshold)/ratio;
