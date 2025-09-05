@@ -143,7 +143,6 @@ const ctxWaveform = canvasWaveform.getContext("2d");
 const ctxGR = grCanvas.getContext("2d");
 const ctxGraph = compGraph.getContext("2d");
 
-// Conversion non linéaire sliders attack/release
 function sliderToMs(value){
     const min=0.1;
     const max=1000;
@@ -157,19 +156,11 @@ loopBtn.addEventListener("click", toggleLoop);
 
 threshSlider.addEventListener("input",updateCompressor);
 ratioSlider.addEventListener("input",updateCompressor);
+attackSlider.addEventListener("input",()=>{document.getElementById("attackVal").textContent=Math.round(sliderToMs(attackSlider.value))+" ms";applyCompressorSettings();});
+releaseSlider.addEventListener("input",()=>{document.getElementById("releaseVal").textContent=Math.round(sliderToMs(releaseSlider.value))+" ms";applyCompressorSettings();});
 makeupSlider.addEventListener("input",()=>{
-    updateCompressorValuesDisplay();
-    redraw();
-});
-
-attackSlider.addEventListener("input",()=>{
-    document.getElementById("attackVal").textContent=Math.round(sliderToMs(attackSlider.value))+" ms";
-    applyCompressorSettings();
-    redraw();
-});
-releaseSlider.addEventListener("input",()=>{
-    document.getElementById("releaseVal").textContent=Math.round(sliderToMs(releaseSlider.value))+" ms";
-    applyCompressorSettings();
+    document.getElementById("makeupVal").textContent=makeupSlider.value+" dB";
+    if(gainNode) gainNode.gain.value = Math.pow(10, parseFloat(makeupSlider.value)/20);
     redraw();
 });
 
@@ -181,11 +172,9 @@ async function handleFile(e){
   if(!file) return;
   if(!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
 
-  // Réinitialiser paramètres
-  threshSlider.value=0; ratioSlider.value=1;
-  attackSlider.value=0; releaseSlider.value=0; makeupSlider.value=0;
+  threshSlider.value=0; ratioSlider.value=1; attackSlider.value=0; releaseSlider.value=0; makeupSlider.value=0;
   updateCompressorValuesDisplay();
-  compState.env = 0;
+  compState.env=0;
 
   const arrayBuffer = await file.arrayBuffer();
   buffer = await audioContext.decodeAudioData(arrayBuffer);
@@ -201,9 +190,7 @@ function togglePlay(){
     sourceNode.stop();
     isPlaying=false;
     playPauseBtn.textContent="▶️ Lecture";
-  } else {
-    playSource();
-  }
+  } else playSource();
 }
 
 function playSource(){
@@ -215,9 +202,10 @@ function playSource(){
   sourceNode.loop = loopEnabled;
 
   compressorNode = audioContext.createDynamicsCompressor();
-  gainNode = audioContext.createGain();
-
   applyCompressorSettings();
+
+  gainNode = audioContext.createGain();
+  gainNode.gain.value = Math.pow(10, parseFloat(makeupSlider.value)/20);
 
   analyserNode = audioContext.createAnalyser();
   analyserNode.fftSize=2048;
@@ -226,9 +214,6 @@ function playSource(){
   compressorNode.connect(gainNode);
   gainNode.connect(analyserNode);
   analyserNode.connect(audioContext.destination);
-
-  // Make-up gain
-  gainNode.gain.value = Math.pow(10, parseFloat(makeupSlider.value)/20);
 
   sourceNode.start(0);
   isPlaying=true;
@@ -243,15 +228,12 @@ function applyCompressorSettings(){
   compressorNode.ratio.value = parseFloat(ratioSlider.value);
   compressorNode.attack.value = sliderToMs(parseFloat(attackSlider.value))/1000;
   compressorNode.release.value = sliderToMs(parseFloat(releaseSlider.value))/1000;
-
-  // Mettre à jour le gain du make-up
-  if(gainNode) gainNode.gain.value = Math.pow(10, parseFloat(makeupSlider.value)/20);
 }
 
 function updateCompressor(){
   updateCompressorValuesDisplay();
   applyCompressorSettings();
-  compState.env = 0;
+  compState.env=0;
   redraw();
   drawCompGraph();
 }
@@ -314,14 +296,13 @@ function drawCombinedWaveform(ctx, data, zoom, pos, canvas){
   // Waveform compressée avec make-up gain
   ctx.beginPath();
   let state={env:0};
-  const makeupGainLinear = Math.pow(10, parseFloat(makeupSlider.value)/20);
   for(let i=0;i<canvas.width;i++){
     const segStart = start + i*step;
     let min=1,max=-1;
     for(let j=0;j<step;j++){
       let idx = segStart+j;
       if(idx>=totalLength) break;
-      let s = compressSampleRealtime(data[idx],state) * makeupGainLinear / peak;
+      let s = compressSampleRealtime(data[idx],state)*Math.pow(10, parseFloat(makeupSlider.value)/20)/peak;
       if(s<min) min=s;
       if(s>max) max=s;
     }
@@ -331,20 +312,20 @@ function drawCombinedWaveform(ctx, data, zoom, pos, canvas){
   ctx.strokeStyle="#ff8844";
   ctx.stroke();
 
-  // Réduction de gain (GR) avec 0 dB en haut
+  // Réduction de gain (GR) 0dB en haut
   ctx.beginPath();
   for(let i=0;i<canvas.width;i++){
-      const segStart = start + i*step;
-      let maxReduction = 0;
-      for(let j=0;j<step;j++){
-        let idx = segStart+j;
-        if(idx>=totalLength) break;
-        const s = data[idx];
-        const gainDb = compressSampleRealtime(s,{env:0}) - s; // approximation env
-        if(gainDb < maxReduction) maxReduction = gainDb;
-      }
-      const y = ( -maxReduction / 60 ) * canvas.height; 
-      if(i===0) ctx.moveTo(i,y); else ctx.lineTo(i,y);
+    const segStart = start + i*step;
+    let maxReduction = 0;
+    for(let j=0;j<step;j++){
+      let idx = segStart+j;
+      if(idx>=totalLength) break;
+      const s = data[idx];
+      const gainDb = compressSampleReduction(s, state);
+      if(gainDb < maxReduction) maxReduction = gainDb;
+    }
+    const y = (-maxReduction/60)*canvas.height;
+    if(i===0) ctx.moveTo(i,y); else ctx.lineTo(i,y);
   }
   ctx.strokeStyle="rgba(255,0,0,0.5)";
   ctx.lineWidth=2;
@@ -370,8 +351,28 @@ function compressSampleRealtime(sample,state){
                   : Math.exp(-1/(audioContext.sampleRate*release || 1e-3));
     state.env = state.env*coeff + gainDb*(1-coeff);
 
-    const linearGain = Math.pow(10,state.env/20);
-    return sample*linearGain;
+    return sample*Math.pow(10,state.env/20);
+}
+
+function compressSampleReduction(sample,state){
+    const threshold = parseFloat(threshSlider.value);
+    const ratio = parseFloat(ratioSlider.value);
+    const attack = sliderToMs(parseFloat(attackSlider.value))/1000;
+    const release = sliderToMs(parseFloat(releaseSlider.value))/1000;
+
+    const eps = 1e-8;
+    let dbSample = 20*Math.log10(Math.abs(sample)+eps);
+
+    let gainDb = 0;
+    if(dbSample > threshold){
+        gainDb = threshold + (dbSample-threshold)/ratio - dbSample;
+    }
+
+    const coeff = (gainDb < state.env) 
+                  ? Math.exp(-1/(audioContext.sampleRate*attack || 1e-3))
+                  : Math.exp(-1/(audioContext.sampleRate*release || 1e-3));
+    state.env = state.env*coeff + gainDb*(1-coeff);
+    return state.env;
 }
 
 function drawCompGraph(){
@@ -407,9 +408,10 @@ function drawGRRealtime(){
   if(!compressorNode) return;
   let reduction = compressorNode.reduction ? compressorNode.reduction : 0;
   let height = grCanvas.height;
-  let y = (reduction/60) * height; // 0 dB en haut, descend
+  let y = (reduction/60) * height; // 0 dB en haut
   ctxGR.fillStyle="red";
   ctxGR.fillRect(0,0,grCanvas.width,y);
+  redraw();
 }
 
 function toggleLoop(){
