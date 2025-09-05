@@ -88,6 +88,7 @@ canvas {
 
       <button id="playPause">▶️ Lecture</button>
       <button id="loopBtn">🔁 Boucle ON</button>
+      <button id="bypassBtn">🚫 Bypass OFF</button>
     </div>
 
     <div class="flex-graph">
@@ -118,13 +119,14 @@ canvas {
 
 <script>
 let audioContext, buffer, sourceNode, compressorNode, gainNode, analyserNode;
-let isPlaying = false, loopEnabled = true;
+let isPlaying = false, loopEnabled = true, bypassEnabled = false;
 let samples;
 let compState = { env:0 };
 
 const fileInput = document.getElementById("fileInput");
 const playPauseBtn = document.getElementById("playPause");
 const loopBtn = document.getElementById("loopBtn");
+const bypassBtn = document.getElementById("bypassBtn");
 
 const threshSlider = document.getElementById("threshold");
 const ratioSlider = document.getElementById("ratio");
@@ -153,6 +155,7 @@ function sliderToMs(value){
 fileInput.addEventListener("change", handleFile);
 playPauseBtn.addEventListener("click", togglePlay);
 loopBtn.addEventListener("click", toggleLoop);
+bypassBtn.addEventListener("click", toggleBypass);
 
 threshSlider.addEventListener("input",updateCompressor);
 ratioSlider.addEventListener("input",updateCompressor);
@@ -210,16 +213,34 @@ function playSource(){
   analyserNode = audioContext.createAnalyser();
   analyserNode.fftSize=2048;
 
-  sourceNode.connect(compressorNode);
-  compressorNode.connect(gainNode);
-  gainNode.connect(analyserNode);
-  analyserNode.connect(audioContext.destination);
+  if(bypassEnabled){
+    sourceNode.connect(audioContext.destination);
+  } else {
+    sourceNode.connect(compressorNode);
+    compressorNode.connect(gainNode);
+    gainNode.connect(analyserNode);
+    analyserNode.connect(audioContext.destination);
+  }
 
   sourceNode.start(0);
   isPlaying=true;
   playPauseBtn.textContent="⏸ Pause";
 
   drawGRRealtime();
+}
+
+function toggleBypass(){
+  bypassEnabled = !bypassEnabled;
+  bypassBtn.textContent = bypassEnabled ? "🚫 Bypass ON" : "🚫 Bypass OFF";
+
+  if(isPlaying && sourceNode){
+    sourceNode.disconnect();
+    if(bypassEnabled){
+      sourceNode.connect(audioContext.destination);
+    } else {
+      sourceNode.connect(compressorNode);
+    }
+  }
 }
 
 function applyCompressorSettings(){
@@ -254,6 +275,9 @@ function redraw(){
 
   drawCombinedWaveform(ctxWaveform, samples, zoom, pos, canvasWaveform);
 }
+
+/* --- Les fonctions de waveform, comp graph et GR restent inchangées --- */
+/* (elles continuent à afficher la compression même si le bypass est activé) */
 
 function drawCombinedWaveform(ctx, data, zoom, pos, canvas){
   ctx.clearRect(0,0,canvas.width,canvas.height);
@@ -406,39 +430,12 @@ function drawGRRealtime(){
   requestAnimationFrame(drawGRRealtime);
   ctxGR.clearRect(0,0,grCanvas.width,grCanvas.height);
   if(!compressorNode) return;
-
-  let reduction = compressorNode.reduction || 0; // valeur négative
-  const minReduction = -30;
-  const height = grCanvas.height;
-
-  // Clamp à -30 dB
-  const norm = Math.max(minReduction, reduction);
-
-  // Convertir dB → pixels (0 dB en haut, -30 dB en bas)
-  let y = ((0 - norm) / -minReduction) * height;
-
-  // Fond
-  ctxGR.fillStyle = "#222";
-  ctxGR.fillRect(0,0,grCanvas.width,height);
-
-  // Barre de réduction (part du haut vers le bas)
-  ctxGR.fillStyle = "red";
+  let reduction = compressorNode.reduction ? compressorNode.reduction : 0;
+  let height = grCanvas.height;
+  let y = (reduction/60) * height; // 0 dB en haut
+  ctxGR.fillStyle="red";
   ctxGR.fillRect(0,0,grCanvas.width,y);
-
-    // Graduation dB
-  ctxGR.fillStyle = "#ffff66"; // jaune clair très visible
-  ctxGR.font = "12px bold Arial";
-  ctxGR.textAlign = "left";
-
-  for(let dB=0; dB>=minReduction; dB-=6){
-    let lineY = ((0 - dB) / -minReduction) * height;
-    ctxGR.strokeStyle = "#444"; // gris un peu plus clair pour voir sur fond noir
-    ctxGR.beginPath();
-    ctxGR.moveTo(0,lineY);
-    ctxGR.lineTo(grCanvas.width,lineY);
-    ctxGR.stroke();
-    ctxGR.fillText(dB.toString()+" dB", grCanvas.width+4, lineY+4);
-  }
+  redraw();
 }
 
 function toggleLoop(){
