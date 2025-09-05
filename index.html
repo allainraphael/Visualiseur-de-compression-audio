@@ -118,7 +118,7 @@ canvas {
 <script>
 let audioContext, buffer, sourceNode, compressorNode, gainNode, analyserNode;
 let isPlaying = false, loopEnabled = true, bypassEnabled = false;
-let samples, globalPeak = 1;
+let samples;
 let compState = { env:0 };
 
 const fileInput = document.getElementById("fileInput");
@@ -155,42 +155,13 @@ playPauseBtn.addEventListener("click", togglePlay);
 loopBtn.addEventListener("click", toggleLoop);
 bypassBtn.addEventListener("click", toggleBypass);
 
-// Sliders → update immédiat waveform + courbe de transfert
-threshSlider.addEventListener("input",()=>{
-    updateCompressorValuesDisplay();
-    applyCompressorSettings();
-    compState.env=0;
-    redraw();
-    drawCompGraph();
-});
-
-ratioSlider.addEventListener("input",()=>{
-    updateCompressorValuesDisplay();
-    applyCompressorSettings();
-    compState.env=0;
-    redraw();
-    drawCompGraph();
-});
-
-attackSlider.addEventListener("input",()=>{
-    document.getElementById("attackVal").textContent=Math.round(sliderToMs(attackSlider.value))+" ms";
-    applyCompressorSettings();
-    redraw();
-    drawCompGraph();
-});
-
-releaseSlider.addEventListener("input",()=>{
-    document.getElementById("releaseVal").textContent=Math.round(sliderToMs(releaseSlider.value))+" ms";
-    applyCompressorSettings();
-    redraw();
-    drawCompGraph();
-});
-
+threshSlider.addEventListener("input",updateCompressor);
+ratioSlider.addEventListener("input",updateCompressor);
+attackSlider.addEventListener("input",()=>{document.getElementById("attackVal").textContent=Math.round(sliderToMs(attackSlider.value))+" ms";applyCompressorSettings();});
+releaseSlider.addEventListener("input",()=>{document.getElementById("releaseVal").textContent=Math.round(sliderToMs(releaseSlider.value))+" ms";applyCompressorSettings();});
 makeupSlider.addEventListener("input",()=>{
     document.getElementById("makeupVal").textContent=makeupSlider.value+" dB";
-    if(gainNode) gainNode.gain.value = Math.pow(10, parseFloat(makeupSlider.value)/20);
-    redraw();
-    drawCompGraph();
+    if(gainNode && !bypassEnabled) gainNode.gain.value = Math.pow(10, parseFloat(makeupSlider.value)/20);
 });
 
 zoomSlider.addEventListener("input", redraw);
@@ -209,39 +180,33 @@ async function handleFile(e){
   buffer = await audioContext.decodeAudioData(arrayBuffer);
   samples = buffer.getChannelData(0).slice();
 
-  globalPeak = samples.reduce((acc,v)=>Math.max(acc,Math.abs(v)),0) || 1;
-
   redraw();
   updateCompressor();
-  if(isPlaying) playSource();
 }
 
-function togglePlay() {
-  if (!buffer) return;
+function togglePlay(){
+  if(!buffer) return;
 
-  if (isPlaying) {
+  if(isPlaying){
     stopSource();
-    playPauseBtn.textContent = "▶️ Lecture";
-    isPlaying = false;
+    playPauseBtn.textContent="▶️ Lecture";
+    isPlaying=false;
   } else {
     playSource();
-    playPauseBtn.textContent = "⏸ Pause";
-    isPlaying = true;
+    playPauseBtn.textContent="⏸ Pause";
+    isPlaying=true;
   }
 }
 
 function stopSource() {
-  if (sourceNode) {
-    try { sourceNode.stop(); } catch(e) {}
-    sourceNode.disconnect(); sourceNode = null;
-  }
-  if (compressorNode) { compressorNode.disconnect(); compressorNode = null; }
-  if (gainNode) { gainNode.disconnect(); gainNode = null; }
-  if (analyserNode) { analyserNode.disconnect(); analyserNode = null; }
+  if (sourceNode) { try { sourceNode.stop(); } catch(e){} sourceNode.disconnect(); sourceNode=null; }
+  if (compressorNode) { compressorNode.disconnect(); compressorNode=null; }
+  if (gainNode) { gainNode.disconnect(); gainNode=null; }
+  if (analyserNode) { analyserNode.disconnect(); analyserNode=null; }
 }
 
 function playSource() {
-  stopSource(); // toujours partir d'une chaîne propre
+  stopSource();
 
   sourceNode = audioContext.createBufferSource();
   sourceNode.buffer = buffer;
@@ -250,11 +215,9 @@ function playSource() {
   analyserNode = audioContext.createAnalyser();
   analyserNode.fftSize = 2048;
 
-  if (bypassEnabled) {
-    // Bypass = son original uniquement
+  if(bypassEnabled){
     sourceNode.connect(analyserNode);
   } else {
-    // Compression + make-up en temps réel
     compressorNode = audioContext.createDynamicsCompressor();
     applyCompressorSettings();
 
@@ -267,13 +230,14 @@ function playSource() {
   }
 
   analyserNode.connect(audioContext.destination);
+
   sourceNode.start();
 
   sourceNode.onended = () => {
-    if (!loopEnabled) {
+    if(!loopEnabled){
       stopSource();
-      isPlaying = false;
-      playPauseBtn.textContent = "▶️ Lecture";
+      isPlaying=false;
+      playPauseBtn.textContent="▶️ Lecture";
     }
   };
 
@@ -282,12 +246,11 @@ function playSource() {
   drawCompGraph();
 }
 
-function toggleBypass() {
+function toggleBypass(){
   bypassEnabled = !bypassEnabled;
   bypassBtn.textContent = bypassEnabled ? "🚫 Bypass ON" : "🚫 Bypass OFF";
 
-  if (isPlaying) {
-    // Reconnecte la chaîne audio proprement, sans relancer le son depuis le début
+  if(isPlaying){
     playSource();
   }
 }
@@ -333,6 +296,12 @@ function drawCombinedWaveform(ctx, data, zoom, pos, canvas){
   start = Math.max(0, Math.min(start, totalLength-1));
   let end = Math.min(start+segmentLength, totalLength);
   const step = Math.max(1, Math.floor((end-start)/canvas.width));
+  let peak = 0;
+  for(let i=start;i<end;i++){
+    const s=Math.abs(data[i]);
+    if(s>peak) peak=s;
+  }
+  if(peak===0) peak=1;
   const amp = canvas.height/2;
 
   ctx.beginPath();
@@ -342,7 +311,7 @@ function drawCombinedWaveform(ctx, data, zoom, pos, canvas){
     for(let j=0;j<step;j++){
       let idx = segStart+j;
       if(idx>=totalLength) break;
-      let s = data[idx]/globalPeak;
+      let s = data[idx]/peak;
       if(s<min) min=s;
       if(s>max) max=s;
     }
@@ -360,9 +329,7 @@ function drawCombinedWaveform(ctx, data, zoom, pos, canvas){
     for(let j=0;j<step;j++){
       let idx = segStart+j;
       if(idx>=totalLength) break;
-      let s = compressSampleRealtime(data[idx],state)
-              *Math.pow(10, parseFloat(makeupSlider.value)/20)
-              /globalPeak;
+      let s = compressSampleRealtime(data[idx],state)*Math.pow(10, parseFloat(makeupSlider.value)/20)/peak;
       if(s<min) min=s;
       if(s>max) max=s;
     }
@@ -374,7 +341,6 @@ function drawCombinedWaveform(ctx, data, zoom, pos, canvas){
 }
 
 function compressSampleRealtime(sample,state){
-    if(!audioContext) return sample;
     const threshold = parseFloat(threshSlider.value);
     const ratio = parseFloat(ratioSlider.value);
     const attack = sliderToMs(parseFloat(attackSlider.value))/1000;
@@ -425,7 +391,7 @@ function drawGRRealtime(){
   ctxGR.clearRect(0,0,grCanvas.width,grCanvas.height);
   if(!compressorNode) return;
 
-  const reduction = compressorNode.reduction;
+  const reduction = compressorNode.reduction; // dB négatif
   const minReduction = -30;
   const norm = Math.max(minReduction, reduction);
   const height = grCanvas.height;
