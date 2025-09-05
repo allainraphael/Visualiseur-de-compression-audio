@@ -216,20 +216,33 @@ async function handleFile(e){
   if(isPlaying) playSource();
 }
 
-function togglePlay(){
-  if(isPlaying){
-    sourceNode.stop();
-    isPlaying=false;
-    playPauseBtn.textContent="▶️ Lecture";
-  } else playSource();
+function togglePlay() {
+  if (!buffer) return;
+
+  if (isPlaying) {
+    stopSource();
+    playPauseBtn.textContent = "▶️ Lecture";
+    isPlaying = false;
+  } else {
+    playSource();
+    playPauseBtn.textContent = "⏸ Pause";
+    isPlaying = true;
+  }
 }
 
-function playSource(){
-  if(!buffer) return;
-  if(sourceNode){
-    try{ sourceNode.stop(); } catch(e){}
+function stopSource() {
+  if (sourceNode) {
+    try {
+      sourceNode.stop();
+    } catch (e) {}
     sourceNode.disconnect();
+    sourceNode = null;
   }
+}
+
+function playSource() {
+  stopSource(); // toujours repartir proprement
+
   sourceNode = audioContext.createBufferSource();
   sourceNode.buffer = buffer;
   sourceNode.loop = loopEnabled;
@@ -238,32 +251,51 @@ function playSource(){
   applyCompressorSettings();
 
   gainNode = audioContext.createGain();
-  gainNode.gain.value = Math.pow(10, parseFloat(makeupSlider.value)/20);
+  // ⚡ en bypass, pas de make-up
+  if (!bypassEnabled) {
+    gainNode.gain.value = Math.pow(10, parseFloat(makeupSlider.value) / 20);
+  } else {
+    gainNode.gain.value = 1.0;
+  }
 
   analyserNode = audioContext.createAnalyser();
   analyserNode.fftSize = 2048;
 
-  if(bypassEnabled){
-    // 🔹 Bypass : original → analyser → destination
+  // Connexion selon bypass
+  if (bypassEnabled) {
     sourceNode.connect(analyserNode);
-    analyserNode.connect(audioContext.destination);
   } else {
-    // 🔹 Normal : original → comp → makeup → analyser → destination
     sourceNode.connect(compressorNode);
     compressorNode.connect(gainNode);
     gainNode.connect(analyserNode);
-    analyserNode.connect(audioContext.destination);
   }
 
+  analyserNode.connect(audioContext.destination);
+
   sourceNode.start(0);
-  isPlaying = true;
-  startGRMeter();
+
+  // quand la lecture finit (si pas en boucle), on remet le bouton Lecture
+  sourceNode.onended = () => {
+    if (!loopEnabled) {
+      isPlaying = false;
+      playPauseBtn.textContent = "▶️ Lecture";
+    }
+  };
+
+  drawGRRealtime();
+  redraw();
+  drawCompGraph();
 }
 
-function toggleBypass(){
+function toggleBypass() {
   bypassEnabled = !bypassEnabled;
   bypassBtn.textContent = bypassEnabled ? "🚫 Bypass ON" : "🚫 Bypass OFF";
-  if(isPlaying) playSource();
+
+  if (isPlaying) {
+    // reconnecter sans relancer doublement la lecture
+    stopSource();
+    playSource();
+  }
 }
 
 function applyCompressorSettings(){
