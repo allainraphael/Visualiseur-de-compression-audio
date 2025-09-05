@@ -40,10 +40,6 @@ canvas {
   display: block;
   margin: 10px 0;
 }
-.waveform-container {
-  display: flex;
-  flex-direction: column;
-}
 .zoom-nav {
   display: flex;
   align-items: center;
@@ -115,11 +111,8 @@ canvas {
       <span id="posVal">0%</span>
     </div>
 
-    <h3>Original</h3>
-    <canvas id="canvasOriginal" width="900" height="150"></canvas>
-
-    <h3>Compressé</h3>
-    <canvas id="canvasCompressed" width="900" height="150"></canvas>
+    <h3>Waveform</h3>
+    <canvas id="canvasWaveform" width="900" height="450"></canvas>
   </div>
 </div>
 
@@ -144,13 +137,11 @@ const makeupSlider = document.getElementById("makeup");
 const zoomSlider = document.getElementById("zoom");
 const posSlider = document.getElementById("position");
 
-const canvasOriginal = document.getElementById("canvasOriginal");
-const canvasCompressed = document.getElementById("canvasCompressed");
+const canvasWaveform = document.getElementById("canvasWaveform");
 const grCanvas = document.getElementById("grMeter");
 const compGraph = document.getElementById("compGraph");
 
-const ctxOrig = canvasOriginal.getContext("2d");
-const ctxComp = canvasCompressed.getContext("2d");
+const ctxWaveform = canvasWaveform.getContext("2d");
 const ctxGR = grCanvas.getContext("2d");
 const ctxGraph = compGraph.getContext("2d");
 
@@ -161,7 +152,6 @@ loopBtn.addEventListener("click", toggleLoop);
 zoomSlider.addEventListener("input", redraw);
 posSlider.addEventListener("input", redraw);
 
-// --- Fonctions ---
 async function handleFile(e){
   const file = e.target.files[0];
   if(!file) return;
@@ -177,7 +167,6 @@ async function handleFile(e){
   buffer = await audioContext.decodeAudioData(arrayBuffer);
   samples = buffer.getChannelData(0).slice();
 
-  drawWaveform(ctxOrig, samples, 1,0,canvasOriginal,"#44ccff");
   redraw();
   updateCompressor();
   if(isPlaying) playSource();
@@ -248,11 +237,10 @@ function redraw(){
   document.getElementById("zoomVal").textContent=zoom+"x";
   document.getElementById("posVal").textContent=Math.round(pos*100)+"%";
 
-  drawWaveform(ctxOrig, samples, zoom, pos, canvasOriginal,"#44ccff");
-  drawWaveform(ctxComp, samples, zoom, pos, canvasCompressed,"#ff8844", true);
+  drawCombinedWaveform(ctxWaveform, samples, zoom, pos, canvasWaveform);
 }
 
-function drawWaveform(ctx,data,zoom,pos,canvas,color,isCompressed=false){
+function drawCombinedWaveform(ctx, data, zoom, pos, canvas){
   ctx.clearRect(0,0,canvas.width,canvas.height);
   if(!data || data.length===0) return;
 
@@ -264,8 +252,8 @@ function drawWaveform(ctx,data,zoom,pos,canvas,color,isCompressed=false){
   const step = Math.max(1, Math.floor((end-start)/canvas.width));
 
   const amp = canvas.height/2;
+  // Original
   ctx.beginPath();
-  let state = {env:0}; // reset attack/release pour waveform compressée
   for(let i=0;i<canvas.width;i++){
     const segStart = start + i*step;
     let min=1,max=-1;
@@ -273,25 +261,33 @@ function drawWaveform(ctx,data,zoom,pos,canvas,color,isCompressed=false){
       let idx = segStart+j;
       if(idx>=totalLength) break;
       let s = data[idx];
-      if(isCompressed){
-        s = compressSampleRealtime(s,state);
-      }
       if(s<min) min=s;
       if(s>max) max=s;
     }
     ctx.moveTo(i, amp+min*amp);
     ctx.lineTo(i, amp+max*amp);
   }
-  ctx.strokeStyle=color;
+  ctx.strokeStyle="#44ccff";
   ctx.stroke();
 
-  ctx.fillStyle="#888";
-  ctx.font="12px Arial";
-  for(let t=0;t<=10;t++){
-    const x = t/10*canvas.width;
-    const sec = ((start + t*segmentLength/10)/buffer.sampleRate).toFixed(2);
-    ctx.fillText(sec+"s",x,canvas.height-2);
+  // Compressé
+  ctx.beginPath();
+  let state={env:0};
+  for(let i=0;i<canvas.width;i++){
+    const segStart = start + i*step;
+    let min=1,max=-1;
+    for(let j=0;j<step;j++){
+      let idx = segStart+j;
+      if(idx>=totalLength) break;
+      let s = compressSampleRealtime(data[idx],state);
+      if(s<min) min=s;
+      if(s>max) max=s;
+    }
+    ctx.moveTo(i, amp+min*amp);
+    ctx.lineTo(i, amp+max*amp);
   }
+  ctx.strokeStyle="#ff8844";
+  ctx.stroke();
 }
 
 function compressSampleRealtime(sample,state){
