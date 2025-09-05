@@ -135,6 +135,7 @@ function togglePlay(){
   } else {
     source = audioContext.createBufferSource();
     source.buffer = buffer;
+    source.loop = true; // ✅ boucle activée par défaut
 
     compressor = audioContext.createDynamicsCompressor();
     compressor.threshold.value = parseFloat(threshSlider.value);
@@ -153,12 +154,6 @@ function togglePlay(){
     startTime = audioContext.currentTime - pauseTime;
     playPauseBtn.textContent = "⏸ Pause";
     isPlaying = true;
-
-    source.onended = () => {
-      playPauseBtn.textContent = "▶️ Lecture";
-      isPlaying = false;
-      pauseTime = 0;
-    };
   }
 }
 
@@ -183,23 +178,29 @@ function redraw(){
   drawWaveform(ctxComp, compressedSamples, zoom, pos, canvasCompressed, "#ff8844");
 }
 
+// ✅ version min/max pour waveform claire
 function drawWaveform(ctx, data, zoom, pos, canvas, color){
   ctx.clearRect(0,0,canvas.width,canvas.height);
   if(!data) return;
 
-  const step = Math.floor(data.length/(canvas.width*zoom));
   const segmentLength = Math.floor(data.length/zoom);
   const start = Math.floor(pos * (data.length - segmentLength));
   const end = Math.min(start+segmentLength, data.length);
+  const step = Math.floor((end-start)/canvas.width);
 
   const amp = canvas.height/2;
   ctx.beginPath();
-  ctx.moveTo(0, amp);
 
-  for(let i=0; i<canvas.width; i++){
-    const idx = start + Math.floor(i*(end-start)/canvas.width);
-    const min = data[idx];
-    ctx.lineTo(i, amp + min*amp);
+  for(let i=0;i<canvas.width;i++){
+    const segStart = start + i*step;
+    let min=1.0, max=-1.0;
+    for(let j=0;j<step;j++){
+      const sample = data[segStart+j] || 0;
+      if(sample<min) min=sample;
+      if(sample>max) max=sample;
+    }
+    ctx.moveTo(i, amp + min*amp);
+    ctx.lineTo(i, amp + max*amp);
   }
 
   ctx.strokeStyle = color;
