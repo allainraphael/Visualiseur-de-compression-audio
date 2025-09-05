@@ -1,407 +1,228 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-<meta charset="UTF-8">
-<title>Visualiseur Compression Audio Avancé</title>
-<style>
-body {
-  font-family: Arial, sans-serif;
-  margin: 0;
-  padding: 20px;
-  background: #000;
-  color: #eee;
-}
-.grid-container {
-  display: grid;
-  grid-template-columns: 320px 1fr;
-  gap: 20px;
-}
-.controls, #compGraphContainer {
-  background: #111;
-  padding: 10px;
-  border: 1px solid #555;
-  border-radius: 5px;
-  margin-bottom: 10px;
-}
-.controls label {
-  display: inline-block;
-  width: 80px;
-}
-.controls input[type="range"], .controls input[type="number"] {
-  width: 150px;
-}
-button {
-  margin: 5px 5px 5px 0;
-  padding: 5px 10px;
-}
-canvas {
-  border: 1px solid #555;
-  background: #111;
-  display: block;
-  margin: 10px 0;
-}
-.zoom-nav {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 10px;
-}
-.flex-graph {
-  display: flex;
-  align-items: flex-start;
-}
-#grMeter {
-  width: 20px !important;
-  height: 280px !important;
-  margin-left: 10px;
-}
-</style>
+  <meta charset="UTF-8">
+  <title>Visualiseur de compression audio</title>
+  <style>
+    body { background:#111; color:#eee; font-family:sans-serif; margin:0; display:flex; height:100vh; }
+    #left { width:35%; padding:10px; box-sizing:border-box; display:flex; flex-direction:column; }
+    #right { flex:1; display:flex; flex-direction:column; }
+    canvas { background:#000; border:1px solid #444; margin-top:10px; }
+    .slider-container { margin:5px 0; }
+    label { display:block; font-size:14px; }
+    #controls { margin-bottom:10px; }
+    #zoomControls { display:flex; gap:10px; margin-bottom:5px; }
+    #grMeter { width:40px; height:150px; background:#222; border:1px solid #555; position:relative; }
+    #grFill { position:absolute; bottom:0; left:0; right:0; background:#0f0; height:0%; }
+  </style>
 </head>
 <body>
-
-<h2>Visualiseur de Compression Audio</h2>
-<input type="file" id="fileInput" accept="audio/*"><br><br>
-
-<div class="grid-container">
-  <!-- Partie gauche -->
-  <div>
-    <div class="controls">
-      <label>Threshold:</label>
-      <input type="range" id="threshold" min="-60" max="0" value="0" step="1">
-      <span id="threshVal">0 dB</span><br>
-
-      <label>Ratio:</label>
-      <input type="range" id="ratio" min="1" max="20" value="1" step="0.5">
-      <span id="ratioVal">1:1</span><br>
-
-      <label>Attack:</label>
-      <input type="range" id="attack" min="0" max="100" value="0">
-      <span id="attackVal">0 ms</span><br>
-
-      <label>Release:</label>
-      <input type="range" id="release" min="0" max="100" value="0">
-      <span id="releaseVal">0 ms</span><br>
-
-      <label>Makeup:</label>
-      <input type="range" id="makeup" min="0" max="24" value="0" step="1">
-      <span id="makeupVal">0 dB</span><br><br>
-
-      <button id="playPause">▶️ Lecture</button>
-      <button id="loopBtn">🔁 Boucle ON</button>
-    </div>
-
-    <div class="flex-graph">
-      <div id="compGraphContainer">
-        <h3>Courbe de transfert</h3>
-        <canvas id="compGraph" width="280" height="280"></canvas>
+  <div id="left">
+    <div id="controls">
+      <div class="slider-container">
+        <label>Threshold: <span id="threshVal">0 dB</span></label>
+        <input type="range" id="threshold" min="-60" max="0" value="0" step="1">
       </div>
-      <canvas id="grMeter" width="20" height="280"></canvas>
+      <div class="slider-container">
+        <label>Ratio: <span id="ratioVal">1:1</span></label>
+        <input type="range" id="ratio" min="1" max="20" value="1" step="0.1">
+      </div>
+      <div class="slider-container">
+        <label>Attack (ms): <span id="attackVal">0</span></label>
+        <input type="range" id="attack" min="0" max="1000" value="0" step="1">
+      </div>
+      <div class="slider-container">
+        <label>Release (ms): <span id="releaseVal">0</span></label>
+        <input type="range" id="release" min="0" max="2000" value="0" step="1">
+      </div>
+      <div class="slider-container">
+        <label>Make-up Gain: <span id="makeupVal">0 dB</span></label>
+        <input type="range" id="makeup" min="0" max="24" value="0" step="0.1">
+      </div>
+    </div>
+    <canvas id="transfer" width="300" height="200"></canvas>
+    <div style="display:flex;align-items:center;gap:10px;">
+      <div id="grMeter"><div id="grFill"></div></div>
+      <span>GR (dB)</span>
     </div>
   </div>
 
-  <!-- Partie droite -->
-  <div class="waveform-container">
-    <div class="zoom-nav">
-      <label>Zoom:</label>
-      <input type="range" id="zoom" min="1" max="20" value="1" step="1">
-      <span id="zoomVal">1x</span>
-
-      <label>Position:</label>
-      <input type="range" id="position" min="0" max="100" value="0" step="1">
-      <span id="posVal">0%</span>
+  <div id="right">
+    <div id="zoomControls">
+      <button id="zoomIn">Zoom +</button>
+      <button id="zoomOut">Zoom -</button>
+      <input type="range" id="position" min="0" max="100" value="0" step="1" style="flex:1;">
     </div>
-
-    <h3>Waveform</h3>
-    <canvas id="canvasWaveform" width="900" height="600"></canvas>
+    <canvas id="waveform" width="900" height="400"></canvas>
+    <div style="margin:10px;">
+      <input type="file" id="fileInput">
+      <button id="playBtn">Play</button>
+      <button id="pauseBtn">Pause</button>
+    </div>
   </div>
-</div>
 
 <script>
-let audioContext, buffer, sourceNode, compressorNode, analyserNode, makeupGainNode, scriptNode;
-let isPlaying = false, loopEnabled = true;
-let samples;
-let compState = { env:0 };
-let grState = { env:0 };
+let audioContext, sourceNode, analyserNode, compressorNode, makeupGainNode, scriptNode;
+let audioBuffer, data, compressedData;
+let isPlaying=false;
+let zoom=1, position=0;
+let animationId;
 
-const fileInput = document.getElementById("fileInput");
-const playPauseBtn = document.getElementById("playPause");
-const loopBtn = document.getElementById("loopBtn");
+// sliders
+const thresholdSlider=document.getElementById("threshold");
+const ratioSlider=document.getElementById("ratio");
+const attackSlider=document.getElementById("attack");
+const releaseSlider=document.getElementById("release");
+const makeupSlider=document.getElementById("makeup");
 
-const threshSlider = document.getElementById("threshold");
-const ratioSlider = document.getElementById("ratio");
-const attackSlider = document.getElementById("attack");
-const releaseSlider = document.getElementById("release");
-const makeupSlider = document.getElementById("makeup");
+const threshVal=document.getElementById("threshVal");
+const ratioVal=document.getElementById("ratioVal");
+const attackVal=document.getElementById("attackVal");
+const releaseVal=document.getElementById("releaseVal");
+const makeupVal=document.getElementById("makeupVal");
 
-const zoomSlider = document.getElementById("zoom");
-const posSlider = document.getElementById("position");
-
-const canvasWaveform = document.getElementById("canvasWaveform");
-const grCanvas = document.getElementById("grMeter");
-const compGraph = document.getElementById("compGraph");
-
-const ctxWaveform = canvasWaveform.getContext("2d");
-const ctxGR = grCanvas.getContext("2d");
-const ctxGraph = compGraph.getContext("2d");
-
-function sliderToMs(value){
-    const min=0.1;
-    const max=1000;
-    const normalized = value/100;
-    return min*Math.pow(max/min, normalized);
+function updateLabels(){
+  threshVal.textContent=thresholdSlider.value+" dB";
+  ratioVal.textContent=ratioSlider.value+":1";
+  attackVal.textContent=attackSlider.value;
+  releaseVal.textContent=releaseSlider.value;
+  makeupVal.textContent=makeupSlider.value+" dB";
 }
-
-fileInput.addEventListener("change", handleFile);
-playPauseBtn.addEventListener("click", togglePlay);
-loopBtn.addEventListener("click", toggleLoop);
-
-threshSlider.addEventListener("input",updateCompressor);
-ratioSlider.addEventListener("input",updateCompressor);
-makeupSlider.addEventListener("input",updateCompressor);
-
-attackSlider.addEventListener("input",()=>{
-    document.getElementById("attackVal").textContent=Math.round(sliderToMs(attackSlider.value))+" ms";
-    applyCompressorSettings();
-    redraw();
-});
-releaseSlider.addEventListener("input",()=>{
-    document.getElementById("releaseVal").textContent=Math.round(sliderToMs(releaseSlider.value))+" ms";
-    applyCompressorSettings();
-    redraw();
-});
-
-zoomSlider.addEventListener("input", redraw);
-posSlider.addEventListener("input", redraw);
-
-async function handleFile(e){
-  const file = e.target.files[0];
-  if(!file) return;
-  if(!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
-
-  // Réinitialiser paramètres
-  threshSlider.value=0; ratioSlider.value=1;
-  attackSlider.value=0; releaseSlider.value=0; makeupSlider.value=0;
-  updateCompressorValuesDisplay();
-  compState.env = 0;
-  grState.env = 0;
-
-  const arrayBuffer = await file.arrayBuffer();
-  buffer = await audioContext.decodeAudioData(arrayBuffer);
-  samples = buffer.getChannelData(0).slice();
-
-  redraw();
+[thresholdSlider,ratioSlider,attackSlider,releaseSlider,makeupSlider].forEach(s=>s.addEventListener("input",()=>{
+  updateLabels();
   updateCompressor();
-  if(isPlaying) playSource();
-}
+}));
 
-function togglePlay(){
-  if(isPlaying){
-    sourceNode.stop();
-    isPlaying=false;
-    playPauseBtn.textContent="▶️ Lecture";
-  } else {
-    playSource();
+function updateCompressor(){
+  if(compressorNode){
+    compressorNode.threshold.value=parseFloat(thresholdSlider.value);
+    compressorNode.ratio.value=parseFloat(ratioSlider.value);
+    compressorNode.attack.value=parseFloat(attackSlider.value)/1000;
+    compressorNode.release.value=parseFloat(releaseSlider.value)/1000;
   }
+  if(makeupGainNode){
+    makeupGainNode.gain.value=Math.pow(10, parseFloat(makeupSlider.value)/20);
+  }
+  drawTransfer();
+}
+updateLabels();
+
+function drawTransfer(){
+  const canvas=document.getElementById("transfer");
+  const ctx=canvas.getContext("2d");
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.strokeStyle="#0f0";
+  ctx.beginPath();
+  const thr=parseFloat(thresholdSlider.value);
+  const ratio=parseFloat(ratioSlider.value);
+  for(let x=-60;x<=0;x+=1){
+    let y;
+    if(x<thr){ y=thr+(x-thr)/ratio; }
+    else { y=x; }
+    let px=(x+60)/60*canvas.width;
+    let py=canvas.height-(y+60)/60*canvas.height;
+    if(x==-60) ctx.moveTo(px,py);
+    else ctx.lineTo(px,py);
+  }
+  ctx.stroke();
+  ctx.strokeStyle="#f00";
+  const thrx=(thr+60)/60*canvas.width;
+  ctx.beginPath();
+  ctx.moveTo(thrx,0);
+  ctx.lineTo(thrx,canvas.height);
+  ctx.stroke();
 }
 
-function playSource(){
-  if(!buffer) return;
-  if(sourceNode) sourceNode.stop();
+// fichier audio
+document.getElementById("fileInput").addEventListener("change",async(e)=>{
+  const file=e.target.files[0];
+  if(!file) return;
+  if(audioContext) audioContext.close();
+  audioContext=new (window.AudioContext||window.webkitAudioContext)();
+  const arrayBuffer=await file.arrayBuffer();
+  audioBuffer=await audioContext.decodeAudioData(arrayBuffer);
+  data=audioBuffer.getChannelData(0);
+  drawCombinedWaveform();
+});
 
-  sourceNode = audioContext.createBufferSource();
-  sourceNode.buffer = buffer;
-  sourceNode.loop = loopEnabled;
+function playAudio(){
+  if(!audioBuffer||isPlaying) return;
+  sourceNode=audioContext.createBufferSource();
+  sourceNode.buffer=audioBuffer;
 
-  compressorNode = audioContext.createDynamicsCompressor();
-  applyCompressorSettings();
-
-  makeupGainNode = audioContext.createGain();
-  makeupGainNode.gain.value = Math.pow(10, parseFloat(makeupSlider.value)/20);
-
-  scriptNode = audioContext.createScriptProcessor(1024, 1, 1);
-  scriptNode.onaudioprocess = function(e) {
-      const input = e.inputBuffer.getChannelData(0);
-      let maxReduction = 0;
-      for(let i=0;i<input.length;i++){
-          let dbSample = 20*Math.log10(Math.abs(input[i])+1e-8);
-          let gainDb=0;
-          const threshold=parseFloat(threshSlider.value);
-          const ratio=parseFloat(ratioSlider.value);
-          const attack=sliderToMs(parseFloat(attackSlider.value))/1000;
-          const release=sliderToMs(parseFloat(releaseSlider.value))/1000;
-
-          if(dbSample>threshold){
-              gainDb=threshold+(dbSample-threshold)/ratio-dbSample;
-          }
-
-          const coeff=(gainDb<grState.env)
-                      ? Math.exp(-1/(audioContext.sampleRate*attack||1e-3))
-                      : Math.exp(-1/(audioContext.sampleRate*release||1e-3));
-          grState.env=grState.env*coeff + gainDb*(1-coeff);
-          if(grState.env<maxReduction) maxReduction=grState.env;
-      }
-      const y=( -maxReduction / 60 ) * grCanvas.height; 
-      ctxGR.clearRect(0,0,grCanvas.width,grCanvas.height);
-      ctxGR.fillStyle="red";
-      ctxGR.fillRect(0,0,grCanvas.width,y);
-  };
-
-  analyserNode = audioContext.createAnalyser();
+  compressorNode=audioContext.createDynamicsCompressor();
+  makeupGainNode=audioContext.createGain();
+  analyserNode=audioContext.createAnalyser();
   analyserNode.fftSize=2048;
 
+  scriptNode=audioContext.createScriptProcessor(2048,1,1);
+  scriptNode.onaudioprocess=function(e){
+    const input=e.inputBuffer.getChannelData(0);
+    const output=e.outputBuffer.getChannelData(0);
+    let reduction=0;
+    for(let i=0;i<input.length;i++){
+      const x=input[i];
+      output[i]=x; // ne change pas le son
+      reduction=Math.max(reduction, -compressorNode.reduction.value);
+    }
+    updateGRMeter(reduction);
+  };
+
+  // ROUTING
   sourceNode.connect(compressorNode);
-  compressorNode.connect(scriptNode);
-  scriptNode.connect(makeupGainNode);
+  compressorNode.connect(makeupGainNode);
   makeupGainNode.connect(analyserNode);
   analyserNode.connect(audioContext.destination);
 
-  sourceNode.start(0);
+  // scriptNode branché pour tourner en temps réel
+  compressorNode.connect(scriptNode);
+  scriptNode.connect(audioContext.destination);
+
+  updateCompressor();
+  sourceNode.loop=true;
+  sourceNode.start();
   isPlaying=true;
-  playPauseBtn.textContent="⏸ Pause";
-  redraw();
+  drawLoop();
+}
+function pauseAudio(){
+  if(sourceNode){ sourceNode.stop(); isPlaying=false; cancelAnimationFrame(animationId);}
 }
 
-function applyCompressorSettings(){
-  if(!compressorNode) return;
-  compressorNode.threshold.value = parseFloat(threshSlider.value);
-  compressorNode.ratio.value = parseFloat(ratioSlider.value);
-  compressorNode.attack.value = sliderToMs(parseFloat(attackSlider.value))/1000;
-  compressorNode.release.value = sliderToMs(parseFloat(releaseSlider.value))/1000;
-  if(makeupGainNode) makeupGainNode.gain.value=Math.pow(10, parseFloat(makeupSlider.value)/20);
+document.getElementById("playBtn").addEventListener("click",playAudio);
+document.getElementById("pauseBtn").addEventListener("click",pauseAudio);
+
+function updateGRMeter(db){
+  const grFill=document.getElementById("grFill");
+  const percent=Math.min(100,Math.max(0,db/20*100));
+  grFill.style.height=percent+"%";
 }
 
-function updateCompressor(){
-  updateCompressorValuesDisplay();
-  applyCompressorSettings();
-  compState.env = 0;
-  grState.env = 0;
-  redraw();
-  drawCompGraph();
-}
-
-function updateCompressorValuesDisplay(){
-  document.getElementById("threshVal").textContent=threshSlider.value+" dB";
-  document.getElementById("ratioVal").textContent=ratioSlider.value+":1";
-  document.getElementById("attackVal").textContent=Math.round(sliderToMs(attackSlider.value))+" ms";
-  document.getElementById("releaseVal").textContent=Math.round(sliderToMs(releaseSlider.value))+" ms";
-  document.getElementById("makeupVal").textContent=makeupSlider.value+" dB";
-}
-
-function redraw(){
-  const zoom=parseInt(zoomSlider.value);
-  const pos=parseInt(posSlider.value)/100;
-  document.getElementById("zoomVal").textContent=zoom+"x";
-  document.getElementById("posVal").textContent=Math.round(pos*100)+"%";
-  drawCombinedWaveform(ctxWaveform,samples,zoom,pos,canvasWaveform);
-}
-
-function drawCombinedWaveform(ctx,data,zoom,pos,canvas){
+function drawCombinedWaveform(){
+  const canvas=document.getElementById("waveform");
+  const ctx=canvas.getContext("2d");
   ctx.clearRect(0,0,canvas.width,canvas.height);
-  if(!data || data.length===0) return;
-
-  const totalLength = data.length;
-  const segmentLength = Math.floor(totalLength/zoom);
-  let start = Math.floor(pos*(totalLength - segmentLength));
-  start = Math.max(0, Math.min(start, totalLength-1));
-  let end = Math.min(start+segmentLength,totalLength);
-  const step = Math.max(1, Math.floor((end-start)/canvas.width));
-  let peak=0;
-  for(let i=start;i<end;i++){
-    const s=Math.abs(data[i]);
-    if(s>peak) peak=s;
-  }
-  if(peak===0) peak=1;
-  const amp = canvas.height/2;
-
+  if(!data) return;
+  const step=Math.floor(data.length/canvas.width);
+  const amp=canvas.height/2;
+  ctx.strokeStyle="#0f0";
   ctx.beginPath();
   for(let i=0;i<canvas.width;i++){
-    const segStart=start+i*step;
+    const s=Math.floor(i*step);
     let min=1,max=-1;
     for(let j=0;j<step;j++){
-      let idx=segStart+j;
-      if(idx>=totalLength) break;
-      let s=data[idx]/peak;
-      if(s<min) min=s;
-      if(s>max) max=s;
+      let v=data[s+j];
+      if(v<min) min=v;
+      if(v>max) max=v;
     }
     ctx.moveTo(i,amp+min*amp);
     ctx.lineTo(i,amp+max*amp);
   }
-  ctx.strokeStyle="#44ccff";
-  ctx.stroke();
-
-  // Waveform compressée avec make-up gain
-  ctx.beginPath();
-  let state={env:0};
-  for(let i=0;i<canvas.width;i++){
-    const segStart=start+i*step;
-    let min=1,max=-1;
-    for(let j=0;j<step;j++){
-      let idx=segStart+j;
-      if(idx>=totalLength) break;
-      let s=compressSampleRealtime(data[idx],state)*Math.pow(10,parseFloat(makeupSlider.value)/20)/peak;
-      if(s<min) min=s;
-      if(s>max) max=s;
-    }
-    ctx.moveTo(i,amp+min*amp);
-    ctx.lineTo(i,amp+max*amp);
-  }
-  ctx.strokeStyle="#ff8844";
   ctx.stroke();
 }
-
-function compressSampleRealtime(sample,state){
-    const threshold=parseFloat(threshSlider.value);
-    const ratio=parseFloat(ratioSlider.value);
-    const attack=sliderToMs(parseFloat(attackSlider.value))/1000;
-    const release=sliderToMs(parseFloat(releaseSlider.value))/1000;
-
-    const eps=1e-8;
-    let dbSample=20*Math.log10(Math.abs(sample)+eps);
-    let gainDb=0;
-    if(dbSample>threshold){
-        gainDb=threshold+(dbSample-threshold)/ratio-dbSample;
-    }
-
-    const coeff=(gainDb<state.env)
-                ? Math.exp(-1/(audioContext.sampleRate*attack||1e-3))
-                : Math.exp(-1/(audioContext.sampleRate*release||1e-3));
-    state.env=state.env*coeff + gainDb*(1-coeff);
-    const linearGain=Math.pow(10,state.env/20);
-    return sample*linearGain;
-}
-
-function drawCompGraph(){
-  ctxGraph.clearRect(0,0,compGraph.width,compGraph.height);
-  const threshold=parseFloat(threshSlider.value);
-  const ratio=parseFloat(ratioSlider.value);
-  const width=compGraph.width;
-  const height=compGraph.height;
-  const threshX=(threshold+60)/60*width;
-
-  ctxGraph.strokeStyle="#ff0";
-  ctxGraph.beginPath();
-  ctxGraph.moveTo(threshX,0);
-  ctxGraph.lineTo(threshX,height);
-  ctxGraph.stroke();
-
-  ctxGraph.strokeStyle="#0f0";
-  ctxGraph.beginPath();
-  for(let x=0;x<=width;x++){
-    let input=x/width*60-60;
-    let output=input<threshold?input:threshold+(input-threshold)/ratio;
-    const y=height-((output+60)/60)*height;
-    if(x===0) ctxGraph.moveTo(x,y); else ctxGraph.lineTo(x,y);
-  }
-  ctxGraph.stroke();
-}
-
-function toggleLoop(){
-  loopEnabled=!loopEnabled;
-  loopBtn.textContent=loopEnabled?"🔁 Boucle ON":"🔁 Boucle OFF";
-  if(sourceNode) sourceNode.loop=loopEnabled;
+function drawLoop(){
+  drawCombinedWaveform();
+  animationId=requestAnimationFrame(drawLoop);
 }
 </script>
-
 </body>
 </html>
