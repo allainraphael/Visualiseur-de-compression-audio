@@ -312,6 +312,7 @@ function redraw(){
 function drawCombinedWaveform(ctx, data, zoom, pos, canvas){
   ctx.clearRect(0,0,canvas.width,canvas.height);
   if(!data || data.length===0) return;
+
   const totalLength = data.length;
   const segmentLength = Math.floor(totalLength/zoom);
   let start = Math.floor(pos*(totalLength - segmentLength));
@@ -326,6 +327,7 @@ function drawCombinedWaveform(ctx, data, zoom, pos, canvas){
   if(peak===0) peak=1;
   const amp = canvas.height/2;
 
+  // --- Waveform originale ---
   ctx.beginPath();
   for(let i=0;i<canvas.width;i++){
     const segStart = start + i*step;
@@ -343,6 +345,7 @@ function drawCombinedWaveform(ctx, data, zoom, pos, canvas){
   ctx.strokeStyle="#44ccff";
   ctx.stroke();
 
+  // --- Waveform compressée ---
   ctx.beginPath();
   let state={env:0};
   for(let i=0;i<canvas.width;i++){
@@ -360,6 +363,33 @@ function drawCombinedWaveform(ctx, data, zoom, pos, canvas){
   }
   ctx.strokeStyle="#ff8844";
   ctx.stroke();
+
+  // --- Axe temps en ms dynamique ---
+  ctx.fillStyle="#eee";
+  ctx.font="12px Arial";
+  ctx.textAlign="center";
+
+  const durationMs = (segmentLength / audioContext.sampleRate) * 1000;
+
+  // Intervalle graduations adaptatif
+  let stepMs = 10;
+  if(durationMs>1000) stepMs = 100;
+  if(durationMs>5000) stepMs = 500;
+  if(durationMs>10000) stepMs = 1000;
+
+  const numSteps = Math.floor(durationMs / stepMs);
+
+  for(let i=0;i<=numSteps;i++){
+    const x = i*(canvas.width/numSteps);
+    const timeLabel = Math.round(i*stepMs);
+    ctx.fillText(timeLabel + " ms", x, canvas.height-2);
+
+    ctx.strokeStyle="#444";
+    ctx.beginPath();
+    ctx.moveTo(x, canvas.height-15);
+    ctx.lineTo(x, canvas.height-5);
+    ctx.stroke();
+  }
 }
 
 function compressSampleRealtime(sample,state){
