@@ -413,7 +413,7 @@ function drawGRRealtime(){
   ctxGR.clearRect(0,0,grCanvas.width,grCanvas.height);
   if(!compressorNode) return;
 
-  const reduction = compressorNode.reduction; // dB négatif
+  const reduction = Math.min(0, compressorNode.reduction); // s'assure que c'est <=0
   const minReduction = -30;
   const norm = Math.max(minReduction, reduction);
   const height = grCanvas.height;
@@ -431,7 +431,7 @@ function drawGRRealtime(){
   for(let dB=0; dB>=minReduction; dB-=6){
     let lineY = ((0 - dB)/-minReduction) * height;
     ctxGR.strokeStyle = "#444";
-    ctxGraph.beginPath();
+    ctxGR.beginPath();
     ctxGR.moveTo(0,lineY);
     ctxGR.lineTo(grCanvas.width,lineY);
     ctxGR.stroke();
