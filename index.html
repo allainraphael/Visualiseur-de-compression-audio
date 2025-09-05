@@ -230,17 +230,23 @@ function playSource(){
 }
 
 function toggleBypass(){
-  bypassEnabled = !bypassEnabled;
-  bypassBtn.textContent = bypassEnabled ? "🚫 Bypass ON" : "🚫 Bypass OFF";
+    bypassEnabled = !bypassEnabled;
+    bypassBtn.textContent = bypassEnabled ? "🚫 Bypass ON" : "🚫 Bypass OFF";
 
-  if(isPlaying && sourceNode){
+    if(!sourceNode) return;
+
     sourceNode.disconnect();
+
     if(bypassEnabled){
-      sourceNode.connect(audioContext.destination);
+        sourceNode.connect(gainNode);
+        gainNode.connect(analyserNode);
+        analyserNode.connect(audioContext.destination);
     } else {
-      sourceNode.connect(compressorNode);
+        sourceNode.connect(compressorNode);
+        compressorNode.connect(gainNode);
+        gainNode.connect(analyserNode);
+        analyserNode.connect(audioContext.destination);
     }
-  }
 }
 
 function applyCompressorSettings(){
