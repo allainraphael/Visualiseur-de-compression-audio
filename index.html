@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
-<title>Visualiseur de Compression Audio</title>
+<title>Visualiseur Avancé de Compression Audio</title>
 <style>
 body {
   font-family: Arial, sans-serif;
@@ -63,7 +63,7 @@ canvas {
 </head>
 <body>
 
-<h2>Visualiseur de Compression Audio</h2>
+<h2>Visualiseur Avancé de Compression Audio</h2>
 <input type="file" id="fileInput" accept="audio/*"><br><br>
 
 <div class="grid-container">
@@ -92,7 +92,7 @@ canvas {
 
       <button id="playPause">▶️ Lecture</button>
       <button id="loopBtn">🔁 Boucle ON</button>
-      <button id="abBtn">🔀 Mode A/B (A: Bypass)</button>
+      <button id="abBtn">🔀 Mode A/B (B: Compressé)</button>
     </div>
 
     <div class="flex-graph">
@@ -125,13 +125,12 @@ canvas {
 </div>
 
 <script>
-// --- Variables audio ---
-let audioContext, buffer, source, compressor, makeupGain;
-let isPlaying = false, startTime = 0, pauseTime = 0;
-let loopEnabled = true;
-let modeAB = "A";
+let audioContext, buffer, sourceNode, compressorNode, makeupNode;
+let isPlaying = false, loopEnabled = true, modeAB = "B";
+let analyserNode;
+let samples, compressedSamples;
 
-// --- DOM ---
+// DOM
 const fileInput = document.getElementById("fileInput");
 const playPauseBtn = document.getElementById("playPause");
 const loopBtn = document.getElementById("loopBtn");
@@ -156,17 +155,11 @@ const ctxComp = canvasCompressed.getContext("2d");
 const ctxGR = grCanvas.getContext("2d");
 const ctxGraph = compGraph.getContext("2d");
 
-let samples, compressedSamples;
-
-// --- Event listeners ---
 fileInput.addEventListener("change", handleFile);
 playPauseBtn.addEventListener("click", togglePlay);
 loopBtn.addEventListener("click", toggleLoop);
 abBtn.addEventListener("click", toggleAB);
-
-[threshSlider, ratioSlider, attackSlider, releaseSlider, makeupSlider].forEach(ctrl => {
-  ctrl.addEventListener("input", updateCompressorAndRedraw);
-});
+[threshSlider, ratioSlider, attackSlider, releaseSlider, makeupSlider].forEach(ctrl => ctrl.addEventListener("input", updateCompressor));
 zoomSlider.addEventListener("input", redraw);
 posSlider.addEventListener("input", redraw);
 
@@ -174,120 +167,121 @@ posSlider.addEventListener("input", redraw);
 async function handleFile(e){
   const file = e.target.files[0];
   if(!file) return;
-
   if(!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
 
   const arrayBuffer = await file.arrayBuffer();
   buffer = await audioContext.decodeAudioData(arrayBuffer);
 
   samples = buffer.getChannelData(0);
+  compressedSamples = samples.slice();
 
-  await processCompressed();
-  redraw();
-  drawCompGraph();
-}
+  drawWaveform(ctxOrig, samples, 1,0,canvasOriginal,"#44ccff");
+  drawWaveform(ctxComp, compressedSamples, 1,0,canvasCompressed,"#ff8844");
 
-async function processCompressed(){
-  if(!buffer) return;
-  const offlineCtx = new OfflineAudioContext(1, buffer.length, buffer.sampleRate);
-  const source = offlineCtx.createBufferSource();
-  source.buffer = buffer;
-
-  const comp = offlineCtx.createDynamicsCompressor();
-  comp.threshold.value = parseFloat(threshSlider.value);
-  comp.ratio.value = parseFloat(ratioSlider.value);
-  comp.attack.value = parseFloat(attackSlider.value);
-  comp.release.value = parseFloat(releaseSlider.value);
-
-  const makeup = offlineCtx.createGain();
-  makeup.gain.value = Math.pow(10, parseFloat(makeupSlider.value)/20);
-
-  source.connect(comp);
-  comp.connect(makeup);
-  makeup.connect(offlineCtx.destination);
-
-  source.start();
-  const rendered = await offlineCtx.startRendering();
-  compressedSamples = rendered.getChannelData(0);
+  updateCompressor();
 }
 
 function togglePlay(){
-  if(!buffer) return;
-  if(!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
-
   if(isPlaying){
-    source.stop();
-    pauseTime = audioContext.currentTime - startTime;
-    playPauseBtn.textContent = "▶️ Lecture";
-    isPlaying = false;
+    sourceNode.stop();
+    isPlaying=false;
+    playPauseBtn.textContent="▶️ Lecture";
   } else {
     playCurrentMode();
   }
 }
 
 function playCurrentMode(){
-  source = audioContext.createBufferSource();
-  source.buffer = buffer;
-  source.loop = loopEnabled;
+  sourceNode = audioContext.createBufferSource();
+  sourceNode.buffer = buffer;
+  sourceNode.loop = loopEnabled;
 
-  if(modeAB === "A"){
-    source.connect(audioContext.destination);
+  compressorNode = audioContext.createDynamicsCompressor();
+  makeupNode = audioContext.createGain();
+
+  // appliquer les valeurs actuelles
+  compressorNode.threshold.value = parseFloat(threshSlider.value);
+  compressorNode.ratio.value = parseFloat(ratioSlider.value);
+  compressorNode.attack.value = parseFloat(attackSlider.value);
+  compressorNode.release.value = parseFloat(releaseSlider.value);
+  makeupNode.gain.value = Math.pow(10, parseFloat(makeupSlider.value)/20);
+
+  analyserNode = audioContext.createAnalyser();
+  analyserNode.fftSize=2048;
+
+  if(modeAB==="A"){
+    sourceNode.connect(analyserNode);
+    analyserNode.connect(audioContext.destination);
   } else {
-    compressor = audioContext.createDynamicsCompressor();
-    compressor.threshold.value = parseFloat(threshSlider.value);
-    compressor.ratio.value = parseFloat(ratioSlider.value);
-    compressor.attack.value = parseFloat(attackSlider.value);
-    compressor.release.value = parseFloat(releaseSlider.value);
-
-    makeupGain = audioContext.createGain();
-    makeupGain.gain.value = Math.pow(10, parseFloat(makeupSlider.value)/20);
-
-    source.connect(compressor);
-    compressor.connect(makeupGain);
-    makeupGain.connect(audioContext.destination);
+    sourceNode.connect(compressorNode);
+    compressorNode.connect(makeupNode);
+    makeupNode.connect(analyserNode);
+    analyserNode.connect(audioContext.destination);
   }
 
-  source.start(0, pauseTime);
-  startTime = audioContext.currentTime - pauseTime;
-  playPauseBtn.textContent = "⏸ Pause";
-  drawGR();
+  sourceNode.start(0);
+  isPlaying=true;
+  playPauseBtn.textContent="⏸ Pause";
+
+  drawGRRealtime();
 }
 
-function drawGR(){
-  requestAnimationFrame(drawGR);
-  ctxGR.clearRect(0,0,grCanvas.width,grCanvas.height);
-
-  if(!compressor || modeAB==="A") return;
-
-  const reduction = Math.max(compressor.reduction ? -compressor.reduction : 0,0);
-  const h = (reduction / 60) * grCanvas.height;
-  ctxGR.fillStyle = "#ff0000";
-  ctxGR.fillRect(0, grCanvas.height - h, grCanvas.width, h);
-}
-
-function toggleLoop(){
-  loopEnabled = !loopEnabled;
-  loopBtn.textContent = loopEnabled ? "🔁 Boucle ON" : "➡️ Boucle OFF";
-  if(source) source.loop = loopEnabled;
-}
-
-function toggleAB(){
-  modeAB = (modeAB === "A") ? "B" : "A";
-  abBtn.textContent = (modeAB === "A") ? "🔀 Mode A/B (A: Bypass)" : "🔀 Mode A/B (B: Compressé)";
-  if(isPlaying){
-    source.stop();
-    playCurrentMode();
+function drawWaveform(ctx,data,zoom,pos,canvas,color){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  if(!data) return;
+  const segmentLength = Math.floor(data.length/zoom);
+  const start = Math.floor(pos*(data.length-segmentLength));
+  const end = Math.min(start+segmentLength, data.length);
+  const step = Math.max(1, Math.floor((end-start)/canvas.width));
+  const amp = canvas.height/2;
+  ctx.beginPath();
+  for(let i=0;i<canvas.width;i++){
+    const segStart=start+i*step;
+    let min=1,max=-1;
+    for(let j=0;j<step;j++){
+      const s=data[segStart+j]||0;
+      if(s<min) min=s;
+      if(s>max) max=s;
+    }
+    ctx.moveTo(i,amp+min*amp);
+    ctx.lineTo(i,amp+max*amp);
+  }
+  ctx.strokeStyle=color;
+  ctx.stroke();
+  // axes temporels
+  ctx.fillStyle="#888";
+  ctx.font="12px Arial";
+  for(let t=0;t<=10;t++){
+    const x = t/10*canvas.width;
+    const sec = ((start + t*segmentLength/10)/buffer.sampleRate).toFixed(2);
+    ctx.fillText(sec+"s",x,canvas.height-2);
   }
 }
 
-async function updateCompressorAndRedraw(){
-  document.getElementById("threshVal").textContent = threshSlider.value+" dB";
-  document.getElementById("ratioVal").textContent = ratioSlider.value+":1";
-  document.getElementById("attackVal").textContent = attackSlider.value+" s";
-  document.getElementById("releaseVal").textContent = releaseSlider.value+" s";
-  document.getElementById("makeupVal").textContent = makeupSlider.value+" dB";
+async function updateCompressor(){
+  document.getElementById("threshVal").textContent=threshSlider.value+" dB";
+  document.getElementById("ratioVal").textContent=ratioSlider.value+":1";
+  document.getElementById("attackVal").textContent=attackSlider.value+" s";
+  document.getElementById("releaseVal").textContent=releaseSlider.value+" s";
+  document.getElementById("makeupVal").textContent=makeupSlider.value+" dB";
 
-  await processCompressed();
+  if(!buffer) return;
+  const offlineCtx = new OfflineAudioContext(1, buffer.length, buffer.sampleRate);
+  const src = offlineCtx.createBufferSource();
+  src.buffer = buffer;
+  const comp = offlineCtx.createDynamicsCompressor();
+  comp.threshold.value=parseFloat(threshSlider.value);
+  comp.ratio.value=parseFloat(ratioSlider.value);
+  comp.attack.value=parseFloat(attackSlider.value);
+  comp.release.value=parseFloat(releaseSlider.value);
+  const makeup = offlineCtx.createGain();
+  makeup.gain.value=Math.pow(10,parseFloat(makeupSlider.value)/20);
+  src.connect(comp);
+  comp.connect(makeup);
+  makeup.connect(offlineCtx.destination);
+  src.start();
+  const rendered = await offlineCtx.startRendering();
+  compressedSamples = rendered.getChannelData(0);
   redraw();
   drawCompGraph();
 }
@@ -295,83 +289,67 @@ async function updateCompressorAndRedraw(){
 function redraw(){
   const zoom = parseInt(zoomSlider.value);
   const pos = parseInt(posSlider.value)/100;
-  document.getElementById("zoomVal").textContent = zoom+"x";
-  document.getElementById("posVal").textContent = posSlider.value+"%";
-
-  drawWaveform(ctxOrig, samples, zoom, pos, canvasOriginal, "#44ccff");
-  drawWaveform(ctxComp, compressedSamples, zoom, pos, canvasCompressed, "#ff8844");
-}
-
-function drawWaveform(ctx, data, zoom, pos, canvas, color){
-  ctx.clearRect(0,0,canvas.width,canvas.height);
-  if(!data) return;
-
-  const segmentLength = Math.floor(data.length/zoom);
-  const start = Math.floor(pos * (data.length - segmentLength));
-  const end = Math.min(start+segmentLength, data.length);
-  const step = Math.max(1, Math.floor((end-start)/canvas.width));
-
-  const amp = canvas.height/2;
-  ctx.beginPath();
-
-  for(let i=0;i<canvas.width;i++){
-    const segStart = start + i*step;
-    let min=1.0, max=-1.0;
-    for(let j=0;j<step;j++){
-      const sample = data[segStart+j] || 0;
-      if(sample<min) min=sample;
-      if(sample>max) max=sample;
-    }
-    ctx.moveTo(i, amp + min*amp);
-    ctx.lineTo(i, amp + max*amp);
-  }
-
-  ctx.strokeStyle = color;
-  ctx.stroke();
+  document.getElementById("zoomVal").textContent=zoom+"x";
+  document.getElementById("posVal").textContent=Math.round(pos*100)+"%";
+  drawWaveform(ctxOrig, samples, zoom, pos, canvasOriginal,"#44ccff");
+  drawWaveform(ctxComp, compressedSamples, zoom, pos, canvasCompressed,"#ff8844");
 }
 
 function drawCompGraph(){
   ctxGraph.clearRect(0,0,compGraph.width,compGraph.height);
-
-  const threshold = parseFloat(threshSlider.value);
-  const ratio = parseFloat(ratioSlider.value);
-  const makeUp = parseFloat(makeupSlider.value);
-
-  const width = compGraph.width;
-  const height = compGraph.height;
-
-  // diagonale simple
+  const threshold=parseFloat(threshSlider.value);
+  const ratio=parseFloat(ratioSlider.value);
+  const makeUp=parseFloat(makeupSlider.value);
+  const width=compGraph.width;
+  const height=compGraph.height;
   ctxGraph.strokeStyle="#888";
   ctxGraph.beginPath();
   ctxGraph.moveTo(0,height);
   ctxGraph.lineTo(width,0);
   ctxGraph.stroke();
-
-  // seuil vertical
-  const threshX = (threshold+60)/60*width;
+  const threshX=(threshold+60)/60*width;
   ctxGraph.strokeStyle="#ff0";
   ctxGraph.beginPath();
   ctxGraph.moveTo(threshX,0);
   ctxGraph.lineTo(threshX,height);
   ctxGraph.stroke();
-
-  // courbe compression
   ctxGraph.strokeStyle="#0f0";
   ctxGraph.beginPath();
   for(let x=0;x<=width;x++){
-    let input = x/width*60-60; // -60 à 0 dB
+    let input=x/width*60-60;
     let output;
-    if(input<threshold){
-      output=input + makeUp;
-    } else {
-      output=threshold + (input-threshold)/ratio + makeUp;
-    }
-    const y = height - ((output+60)/60)*height;
+    if(input<threshold) output=input+makeUp;
+    else output=threshold+(input-threshold)/ratio+makeUp;
+    const y=height-((output+60)/60)*height;
     if(x===0) ctxGraph.moveTo(x,y); else ctxGraph.lineTo(x,y);
   }
   ctxGraph.stroke();
 }
-</script>
 
+function drawGRRealtime(){
+  requestAnimationFrame(drawGRRealtime);
+  ctxGR.clearRect(0,0,grCanvas.width,grCanvas.height);
+  if(!compressorNode || modeAB==="A") return;
+  let reduction = compressorNode.reduction ? -compressorNode.reduction : 0;
+  const h = (reduction/60)*grCanvas.height;
+  ctxGR.fillStyle="#ff0000";
+  ctxGR.fillRect(0,grCanvas.height-h,grCanvas.width,h);
+}
+
+function toggleLoop(){
+  loopEnabled=!loopEnabled;
+  loopBtn.textContent=loopEnabled?"🔁 Boucle ON":"➡️ Boucle OFF";
+  if(sourceNode) sourceNode.loop=loopEnabled;
+}
+
+function toggleAB(){
+  modeAB=(modeAB==="A")?"B":"A";
+  abBtn.textContent=(modeAB==="A")?"🔀 Mode A/B (A: Bypass)":"🔀 Mode A/B (B: Compressé)";
+  if(isPlaying){
+    sourceNode.stop();
+    playCurrentMode();
+  }
+}
+</script>
 </body>
 </html>
