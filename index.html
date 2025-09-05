@@ -319,8 +319,8 @@ function drawCombinedWaveform(ctx, data, zoom, pos, canvas){
   ctx.stroke();
 
   // Réduction de gain (GR) avec 0 dB en haut
-  ctx.beginPath();
-  for(let i=0;i<canvas.width;i++){
+ctx.beginPath();
+for(let i=0;i<canvas.width;i++){
     const segStart = start + i*step;
     let maxReduction = 0;
     for(let j=0;j<step;j++){
@@ -330,12 +330,14 @@ function drawCombinedWaveform(ctx, data, zoom, pos, canvas){
       const gainDb = calcGainReduction(s);
       if(gainDb < maxReduction) maxReduction = gainDb;
     }
-    const y = canvas.height/2 - (maxReduction/60)*(canvas.height/2); // 0 dB en haut
+    // 0 dB en haut, plus la réduction est grande plus y descend
+    const y = ( -maxReduction / 60 ) * canvas.height; 
     if(i===0) ctx.moveTo(i,y); else ctx.lineTo(i,y);
-  }
-  ctx.strokeStyle="rgba(255,0,0,0.5)";
-  ctx.lineWidth=2;
-  ctx.stroke();
+}
+ctx.strokeStyle="rgba(255,0,0,0.5)";
+ctx.lineWidth=2;
+ctx.stroke();
+
 }
 
 function compressSampleRealtime(sample,state){
