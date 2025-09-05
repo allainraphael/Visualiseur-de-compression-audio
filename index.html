@@ -151,12 +151,6 @@ function sliderToMs(value){
     return min*Math.pow(max/min, normalized);
 }
 
-function msToSlider(ms){
-    const min=0.1;
-    const max=1000;
-    return Math.log(ms/min)/Math.log(max/min)*100;
-}
-
 fileInput.addEventListener("change", handleFile);
 playPauseBtn.addEventListener("click", togglePlay);
 loopBtn.addEventListener("click", toggleLoop);
@@ -324,7 +318,7 @@ function drawCombinedWaveform(ctx, data, zoom, pos, canvas){
   ctx.strokeStyle="#ff8844";
   ctx.stroke();
 
-  // Réduction de gain (GR)
+  // Réduction de gain (GR) avec 0 dB en haut
   ctx.beginPath();
   for(let i=0;i<canvas.width;i++){
     const segStart = start + i*step;
@@ -336,7 +330,7 @@ function drawCombinedWaveform(ctx, data, zoom, pos, canvas){
       const gainDb = calcGainReduction(s);
       if(gainDb < maxReduction) maxReduction = gainDb;
     }
-    const y = amp + maxReduction/60*amp; // sommet du canvas = 0 dB reduction
+    const y = canvas.height/2 - (maxReduction/60)*(canvas.height/2); // 0 dB en haut
     if(i===0) ctx.moveTo(i,y); else ctx.lineTo(i,y);
   }
   ctx.strokeStyle="rgba(255,0,0,0.5)";
@@ -408,9 +402,9 @@ function drawGRRealtime(){
   if(!compressorNode) return;
   let reduction = compressorNode.reduction ? compressorNode.reduction : 0;
   let height = grCanvas.height;
-  let y = height/2 - (reduction/60)*(height/2);
+  let y = (reduction/60) * height; // 0 dB en haut, descend
   ctxGR.fillStyle="red";
-  ctxGR.fillRect(0,y,grCanvas.width,height-y);
+  ctxGR.fillRect(0,0,grCanvas.width,y);
 }
 
 function toggleLoop(){
