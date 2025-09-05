@@ -1,403 +1,207 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="fr">
 <head>
-<meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Visualiseur - Forme d'onde complète & Compression</title>
-<style>
-  :root{
-    --bg:#0f1115; --panel:#16181c; --accent:#4facfe; --muted:#9aa4ad; --text:#e6eef8;
-  }
-  *{box-sizing:border-box}
-  body{margin:0;font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial;background:var(--bg);color:var(--text)}
-  header{padding:16px;text-align:center;border-bottom:1px solid #11151a}
-  h1{margin:0;font-size:18px}
-  .wrap{max-width:1100px;margin:18px auto;padding:16px}
-  .panel{background:var(--panel);border-radius:12px;padding:12px;margin-bottom:12px;border:1px solid #131518}
-  .row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
-  .controls .col{min-width:160px}
-  label{display:block;font-size:12px;color:var(--muted);margin-bottom:6px}
-  input[type="range"]{width:220px}
-  input[type="file"]{color:var(--text)}
-  button{background:#1b2128;border:1px solid #232a33;color:var(--text);padding:8px 12px;border-radius:8px;cursor:pointer}
-  button.primary{background:var(--accent);color:#06111c;border:0}
-  .small{font-size:13px;color:var(--muted)}
-  #canvas{width:100%;height:320px;background:#000;border-radius:8px;display:block}
-  .legend{display:flex;gap:14px;align-items:center;margin-top:8px;font-size:13px;color:var(--muted)}
-  .dot{width:10px;height:10px;border-radius:50%}
-  .dot.orig{background:#b5bdc5}
-  .dot.comp{background:var(--accent)}
-  .status{margin-left:auto;font-size:13px;color:var(--muted)}
-  .footer{font-size:13px;color:var(--muted);margin-top:6px}
-</style>
+  <meta charset="UTF-8">
+  <title>Visualiseur de Compression Audio</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    canvas { border: 1px solid #ccc; margin: 10px 0; display: block; }
+    .controls { margin: 10px 0; }
+    .controls label { display: inline-block; width: 100px; }
+  </style>
 </head>
 <body>
-<header>
-  <h1>Visualiseur : forme d'onde complète & compression (Offline)</h1>
-</header>
+  <h2>Visualiseur de Compression Audio</h2>
+  <input type="file" id="fileInput" accept="audio/*"><br><br>
 
-<div class="wrap">
-  <div class="panel controls">
-    <div class="row" style="align-items:center">
-      <input type="file" id="file" accept="audio/*">
-      <button id="play" class="primary">▶️ Lecture</button>
-      <button id="pause">⏸️ Pause</button>
-      <button id="stop">⏹️ Stop</button>
-      <label class="small" style="margin:0 8px"> <input type="checkbox" id="bypass"> Bypass (écouter original)</label>
-      <div class="status" id="status">Aucun fichier chargé</div>
-    </div>
+  <div class="controls">
+    <label>Threshold:</label>
+    <input type="range" id="threshold" min="-60" max="0" value="-12" step="1">
+    <span id="threshVal">-12 dB</span><br>
+
+    <label>Ratio:</label>
+    <input type="number" id="ratio" min="1" max="20" step="0.5" value="4"><br>
+
+    <label>Attack:</label>
+    <input type="range" id="attack" min="0" max="1" step="0.01" value="0.01">
+    <span id="attackVal">0.01 s</span><br>
+
+    <label>Release:</label>
+    <input type="range" id="release" min="0" max="1" step="0.01" value="0.25">
+    <span id="releaseVal">0.25 s</span><br>
+
+    <label>Makeup:</label>
+    <input type="number" id="makeup" min="0" max="24" step="1" value="0"> dB<br><br>
+
+    <button id="playPause">▶️ Lecture</button>
   </div>
 
-  <div class="panel">
-    <div class="row">
-      <div class="col">
-        <label>Threshold (dB) <span id="lab-thresh" class="small"></span></label>
-        <input type="range" id="thresh" min="-60" max="0" step="1" value="-12">
-      </div>
-      <div class="col">
-        <label>Ratio <span id="lab-ratio" class="small"></span></label>
-        <input type="range" id="ratio" min="1" max="20" step="0.5" value="4">
-      </div>
-      <div class="col">
-        <label>Attack (s) <span id="lab-attack" class="small"></span></label>
-        <input type="range" id="attack" min="0.001" max="0.5" step="0.001" value="0.01">
-      </div>
-      <div class="col">
-        <label>Release (s) <span id="lab-release" class="small"></span></label>
-        <input type="range" id="release" min="0.01" max="1.5" step="0.01" value="0.25">
-      </div>
-      <div class="col">
-        <label>Makeup (dB) <span id="lab-makeup" class="small"></span></label>
-        <input type="range" id="makeup" min="-6" max="24" step="0.5" value="0">
-      </div>
-    </div>
-    <div class="footer">Après modification des paramètres la forme d'onde compressée est recalculée (offline) — patience quelques centaines de ms selon la longueur du fichier.</div>
-  </div>
+  <h3>Zoom & Navigation</h3>
+  <label>Zoom:</label>
+  <input type="range" id="zoom" min="1" max="20" value="1" step="1">
+  <span id="zoomVal">1x</span><br>
 
-  <div class="panel">
-    <canvas id="canvas"></canvas>
-    <div class="legend">
-      <div class="dot orig"></div><div>Original (non compressé) — partie haute</div>
-      <div class="dot comp"></div><div>Compressé + Makeup — partie basse</div>
-      <div class="status" id="timeLabel"></div>
-    </div>
-  </div>
-</div>
+  <label>Position:</label>
+  <input type="range" id="position" min="0" max="100" value="0" step="1">
+  <span id="posVal">0%</span>
+
+  <h3>Original</h3>
+  <canvas id="canvasOriginal" width="900" height="150"></canvas>
+  <h3>Compressé</h3>
+  <canvas id="canvasCompressed" width="900" height="150"></canvas>
 
 <script>
-(async ()=>{
+let audioContext, buffer, source, compressor, gainNode;
+let isPlaying = false, startTime = 0, pauseTime = 0;
 
-// Utilitaires
-const dBtoGain = db => Math.pow(10, db/20);
-const gainTodB = g => 20*Math.log10(Math.max(g,1e-12));
+const fileInput = document.getElementById("fileInput");
+const playPauseBtn = document.getElementById("playPause");
 
-const fileEl = document.getElementById('file');
-const playBtn = document.getElementById('play');
-const pauseBtn = document.getElementById('pause');
-const stopBtn = document.getElementById('stop');
-const bypassChk = document.getElementById('bypass');
-const status = document.getElementById('status');
+const threshSlider = document.getElementById("threshold");
+const ratioInput = document.getElementById("ratio");
+const attackSlider = document.getElementById("attack");
+const releaseSlider = document.getElementById("release");
+const makeupInput = document.getElementById("makeup");
 
-const threshEl = document.getElementById('thresh');
-const ratioEl = document.getElementById('ratio');
-const attackEl = document.getElementById('attack');
-const releaseEl = document.getElementById('release');
-const makeupEl = document.getElementById('makeup');
+const zoomSlider = document.getElementById("zoom");
+const posSlider = document.getElementById("position");
 
-const labThresh = document.getElementById('lab-thresh');
-const labRatio  = document.getElementById('lab-ratio');
-const labAttack = document.getElementById('lab-attack');
-const labRelease= document.getElementById('lab-release');
-const labMakeup = document.getElementById('lab-makeup');
+const canvasOriginal = document.getElementById("canvasOriginal");
+const canvasCompressed = document.getElementById("canvasCompressed");
+const ctxOrig = canvasOriginal.getContext("2d");
+const ctxComp = canvasCompressed.getContext("2d");
 
-const canvas = document.getElementById('canvas');
-const ctx = canvas.getContext('2d');
+let samples, compressedSamples;
 
-let audioCtx = null;            // pour playback
-let offlineCtx = null;          // pour rendu compressé
-let originalBuffer = null;      // AudioBuffer chargé
-let compressedBuffer = null;    // AudioBuffer rendu offline
-let sourceNode = null;          // pour lecture
-let isPlaying = false;
-let playStartAt = 0;            // audioCtx.currentTime when started
-let playOffset = 0;             // seconds offset when paused
+fileInput.addEventListener("change", handleFile);
+playPauseBtn.addEventListener("click", togglePlay);
 
-// Resize canvas to device pixels
-function resizeCanvas(){
-  canvas.width = canvas.clientWidth * window.devicePixelRatio;
-  canvas.height= canvas.clientHeight* window.devicePixelRatio;
-  ctx.setTransform(window.devicePixelRatio,0,0,window.devicePixelRatio,0,0);
-  if(originalBuffer) renderWaveforms(); 
-}
-window.addEventListener('resize', resizeCanvas);
-resizeCanvas();
-
-// labels init
-function refreshLabels(){
-  labThresh.textContent = `${threshEl.value} dB`;
-  labRatio.textContent  = `${ratioEl.value}:1`;
-  labAttack.textContent = `${(+attackEl.value).toFixed(3)} s`;
-  labRelease.textContent= `${(+releaseEl.value).toFixed(2)} s`;
-  labMakeup.textContent = `${makeupEl.value} dB`;
-}
-[threshEl,ratioEl,attackEl,releaseEl,makeupEl].forEach(el=>el.addEventListener('input', ()=>{
-  refreshLabels();
-  // recalcule offline seulement si un buffer est chargé
-  if(originalBuffer) renderCompressedOffline();
-}));
-refreshLabels();
-
-// Load file
-fileEl.addEventListener('change', async (e)=>{
-  const f = e.target.files && e.target.files[0];
-  if(!f) return;
-  status.textContent = `Chargement ${f.name}...`;
-  if(!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  const ab = await f.arrayBuffer();
-  originalBuffer = await audioCtx.decodeAudioData(ab);
-  status.textContent = `Fichier chargé — durée ${originalBuffer.duration.toFixed(2)} s`;
-  playOffset = 0;
-  // draw original and compute compressed offline
-  renderWaveforms();
-  await renderCompressedOffline(); // build compressedBuffer and redraw
+[threshSlider, ratioInput, attackSlider, releaseSlider, makeupInput].forEach(ctrl => {
+  ctrl.addEventListener("input", updateCompressorAndRedraw);
 });
+zoomSlider.addEventListener("input", redraw);
+posSlider.addEventListener("input", redraw);
 
-// Draw waveforms: original (top) & compressed (bottom)
-function renderWaveforms(){
-  const w = canvas.clientWidth;
-  const h = canvas.clientHeight;
-  ctx.clearRect(0,0,w,h);
-  ctx.fillStyle = '#000';
-  ctx.fillRect(0,0,w,h);
+async function handleFile(e){
+  const file = e.target.files[0];
+  if(!file) return;
 
-  if(!originalBuffer) {
-    ctx.fillStyle = '#9aa4ad';
-    ctx.font = '14px system-ui';
-    ctx.fillText('Charge un fichier audio pour voir la forme d\'onde', 12, 28);
-    return;
-  }
+  if(!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
 
-  // Prepare sample arrays (mono mix)
-  function getChannelDataMixed(buf){
-    const ch = Math.min(2, buf.numberOfChannels);
-    const len = buf.length;
-    const out = new Float32Array(len);
-    if(ch === 1){
-      out.set(buf.getChannelData(0));
-      return out;
-    }
-    const a = buf.getChannelData(0);
-    const b = buf.getChannelData(1);
-    for(let i=0;i<len;i++){
-      out[i] = 0.5*(a[i] + b[i]);
-    }
-    return out;
-  }
+  const arrayBuffer = await file.arrayBuffer();
+  buffer = await audioContext.decodeAudioData(arrayBuffer);
 
-  const origData = getChannelDataMixed(originalBuffer);
-  const compData = compressedBuffer ? getChannelDataMixed(compressedBuffer) : null;
+  // extrait un canal (mono)
+  samples = buffer.getChannelData(0);
 
-  // downsample to canvas width using peak per bucket for a DAW-like render
-  const px = Math.max(1, Math.floor(w)); // number of samples across
-  function buildEnvelope(data){
-    const len = data.length;
-    const samplesPerBucket = Math.max(1, Math.floor(len/px));
-    const env = new Float32Array(px);
-    for(let i=0;i<px;i++){
-      const start = i*samplesPerBucket;
-      const end = Math.min(len, start + samplesPerBucket);
-      let min=1, max=-1;
-      for(let j=start;j<end;j++){
-        const v = data[j];
-        if(v < min) min = v;
-        if(v > max) max = v;
-      }
-      // choose peak-to-peak amplitude for visual clarity
-      env[i] = (Math.abs(min) > Math.abs(max)) ? min : max;
-    }
-    return env;
-  }
+  await processCompressed();
 
-  const envOrig = buildEnvelope(origData);
-  const envComp = compData ? buildEnvelope(compData) : null;
-
-  // draw axes/time ticks
-  ctx.fillStyle = '#1a1f25';
-  ctx.fillRect(0,0,w,h);
-
-  // draw midline separation
-  const half = Math.floor(h/2);
-  ctx.strokeStyle = '#0f1317';
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(0, half);
-  ctx.lineTo(w, half);
-  ctx.stroke();
-
-  // time ticks every n seconds
-  const duration = originalBuffer.duration;
-  const approxTicks = Math.max(2, Math.floor(w/120));
-  const step = Math.max(0.5, duration/approxTicks);
-  ctx.fillStyle = '#78909a';
-  ctx.font = '11px system-ui';
-  for(let t=0;t<=duration; t+=step){
-    const x = (t/duration) * w;
-    ctx.fillText(`${t.toFixed(1)}s`, x+2, h-6);
-  }
-
-  // draw original (top half) - center at quarter height (0..1 -> top)
-  const paddingY = 6;
-  ctx.beginPath();
-  ctx.lineWidth = 1.5;
-  ctx.strokeStyle = '#b5bdc5'; // grey waveform
-  for(let i=0;i<envOrig.length;i++){
-    const x = (i/envOrig.length)*w;
-    const v = envOrig[i];
-    const y = (half/2) + (1 - v) * (half/2) - paddingY; // map -1..1 to top quarter
-    if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
-  }
-  ctx.stroke();
-
-  // label original
-  ctx.fillStyle = '#9aa4ad';
-  ctx.font = '12px system-ui';
-  ctx.fillText('Original', 8, 18);
-
-  // draw compressed (bottom half) - invert mapping
-  if(envComp){
-    ctx.beginPath();
-    ctx.lineWidth = 1.6;
-    ctx.strokeStyle = '#4facfe'; // accent
-    for(let i=0;i<envComp.length;i++){
-      const x = (i/envComp.length)*w;
-      const v = envComp[i];
-      const y = half + (half/2) + ( - v ) * (half/2) + paddingY; // map -1..1 to bottom quarter
-      if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
-    }
-    ctx.stroke();
-    ctx.fillStyle = '#cfe6ff';
-    ctx.fillText('Compressé + Makeup', 8, half + 18);
-  } else {
-    ctx.fillStyle = '#32444e';
-    ctx.fillText('Compressé (pas encore calculé)', 8, half + 18);
-  }
-
-  // draw border and time ruler top
-  ctx.strokeStyle = '#0b1013';
-  ctx.lineWidth = 1;
-  ctx.strokeRect(0,0,w,h);
+  redraw();
 }
 
-// Offline render to produce compressedBuffer
-let currentRenderToken = 0; // cancel stale renders by token check
-async function renderCompressedOffline(){
-  if(!originalBuffer) return;
-  const myToken = ++currentRenderToken;
-  status.textContent = 'Rendu offline du signal compressé…';
-  // create offline context with same sampleRate and channel count
-  const sr = originalBuffer.sampleRate;
-  const channels = originalBuffer.numberOfChannels;
-  const length = originalBuffer.length;
-  const offline = new OfflineAudioContext(channels, length, sr);
+async function processCompressed(){
+  if(!buffer) return;
+  const offlineCtx = new OfflineAudioContext(1, buffer.length, buffer.sampleRate);
+  const source = offlineCtx.createBufferSource();
+  source.buffer = buffer;
 
-  // build source buffer
-  const src = offline.createBufferSource();
-  src.buffer = originalBuffer;
-  // compressor node
-  const comp = offline.createDynamicsCompressor();
-  comp.threshold.value = Number(threshEl.value);
-  comp.ratio.value     = Number(ratioEl.value);
-  comp.attack.value    = Number(attackEl.value);
-  comp.release.value   = Number(releaseEl.value);
-  comp.knee.value      = 30; // fixed knee for predictable result (could expose)
+  const comp = offlineCtx.createDynamicsCompressor();
+  comp.threshold.value = parseFloat(threshSlider.value);
+  comp.ratio.value = parseFloat(ratioInput.value);
+  comp.attack.value = parseFloat(attackSlider.value);
+  comp.release.value = parseFloat(releaseSlider.value);
 
-  // makeup as gain node (dB)
-  const makeupNode = offline.createGain();
-  makeupNode.gain.value = dBtoGain(Number(makeupEl.value));
+  const makeup = offlineCtx.createGain();
+  makeup.gain.value = Math.pow(10, parseFloat(makeupInput.value)/20);
 
-  // chain: src -> comp -> makeup -> destination
-  src.connect(comp);
-  comp.connect(makeupNode);
-  makeupNode.connect(offline.destination);
+  source.connect(comp);
+  comp.connect(makeup);
+  makeup.connect(offlineCtx.destination);
 
-  src.start(0);
-  try{
-    const rendered = await offline.startRendering(); // returns AudioBuffer
-    // if a newer render started meanwhile, discard this result
-    if(myToken !== currentRenderToken) return;
-    compressedBuffer = rendered;
-    status.textContent = `Rendu compressé prêt — durée ${compressedBuffer.duration.toFixed(2)} s`;
-    renderWaveforms();
-  }catch(err){
-    console.error('Offline rendering failed', err);
-    status.textContent = 'Erreur de rendu offline';
-  }
+  source.start();
+  const rendered = await offlineCtx.startRendering();
+  compressedSamples = rendered.getChannelData(0);
 }
 
-// Playback: play compressedBuffer (or original if bypass)
-function stopPlayback(){
-  if(sourceNode){
-    try{ sourceNode.stop(); }catch(e){}
-    sourceNode.disconnect();
-    sourceNode = null;
-  }
-  isPlaying = false;
-}
+function togglePlay(){
+  if(!buffer) return;
+  if(!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
 
-function startPlayback(){
-  if(!originalBuffer) return;
-  if(!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  stopPlayback();
-
-  const toPlay = bypassChk.checked ? originalBuffer : (compressedBuffer || originalBuffer);
-  sourceNode = audioCtx.createBufferSource();
-  sourceNode.buffer = toPlay;
-  sourceNode.loop = false;
-  // output gain
-  const out = audioCtx.createGain();
-  out.gain.value = 1.0;
-  sourceNode.connect(out).connect(audioCtx.destination);
-  const offset = playOffset % toPlay.duration;
-  sourceNode.start(0, offset);
-  playStartAt = audioCtx.currentTime - offset;
-  isPlaying = true;
-
-  // when end
-  sourceNode.onended = ()=>{
-    isPlaying = false;
-    playOffset = 0;
-  };
-}
-
-// UI playback bindings
-playBtn.addEventListener('click', ()=>{
   if(isPlaying){
-    // ignore if playing
-    return;
+    source.stop();
+    pauseTime = audioContext.currentTime - startTime;
+    playPauseBtn.textContent = "▶️ Lecture";
+    isPlaying = false;
   } else {
-    startPlayback();
+    source = audioContext.createBufferSource();
+    source.buffer = buffer;
+
+    compressor = audioContext.createDynamicsCompressor();
+    compressor.threshold.value = parseFloat(threshSlider.value);
+    compressor.ratio.value = parseFloat(ratioInput.value);
+    compressor.attack.value = parseFloat(attackSlider.value);
+    compressor.release.value = parseFloat(releaseSlider.value);
+
+    gainNode = audioContext.createGain();
+    gainNode.gain.value = Math.pow(10, parseFloat(makeupInput.value)/20);
+
+    source.connect(compressor);
+    compressor.connect(gainNode);
+    gainNode.connect(audioContext.destination);
+
+    source.start(0, pauseTime);
+    startTime = audioContext.currentTime - pauseTime;
+    playPauseBtn.textContent = "⏸ Pause";
+    isPlaying = true;
+
+    source.onended = () => {
+      playPauseBtn.textContent = "▶️ Lecture";
+      isPlaying = false;
+      pauseTime = 0;
+    };
   }
-});
-pauseBtn.addEventListener('click', ()=>{
-  if(!isPlaying) return;
-  // pause by stopping and storing offset
-  const toPlay = bypassChk.checked ? originalBuffer : (compressedBuffer || originalBuffer);
-  playOffset = audioCtx ? (audioCtx.currentTime - playStartAt) : 0;
-  stopPlayback();
-});
-stopBtn.addEventListener('click', ()=>{
-  stopPlayback();
-  playOffset = 0;
-});
+}
 
-// initial: nothing loaded
-// Prevent blocking UI: renderCompressedOffline only after user adjusts param (already set)
-// All parameter changes trigger re-render; we already call renderCompressedOffline after file load and on param input
+async function updateCompressorAndRedraw(){
+  document.getElementById("threshVal").textContent = threshSlider.value+" dB";
+  document.getElementById("attackVal").textContent = attackSlider.value+" s";
+  document.getElementById("releaseVal").textContent = releaseSlider.value+" s";
+  await processCompressed();
+  redraw();
+}
 
-// ensure user interaction for audio autoplay policy: resume on first play
-document.addEventListener('click', ()=>{ if(audioCtx && audioCtx.state === 'suspended') audioCtx.resume(); }, {once:true});
+function redraw(){
+  const zoom = parseInt(zoomSlider.value);
+  const pos = parseInt(posSlider.value)/100;
+  document.getElementById("zoomVal").textContent = zoom+"x";
+  document.getElementById("posVal").textContent = posSlider.value+"%";
 
-})();
+  drawWaveform(ctxOrig, samples, zoom, pos, canvasOriginal);
+  drawWaveform(ctxComp, compressedSamples, zoom, pos, canvasCompressed);
+}
+
+function drawWaveform(ctx, data, zoom, pos, canvas){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  if(!data) return;
+
+  const step = Math.floor(data.length/(canvas.width*zoom));
+  const segmentLength = Math.floor(data.length/zoom);
+  const start = Math.floor(pos * (data.length - segmentLength));
+  const end = Math.min(start+segmentLength, data.length);
+
+  const amp = canvas.height/2;
+  ctx.beginPath();
+  ctx.moveTo(0, amp);
+
+  for(let i=0; i<canvas.width; i++){
+    const idx = start + Math.floor(i*(end-start)/canvas.width);
+    const min = data[idx];
+    ctx.lineTo(i, amp + min*amp);
+  }
+
+  ctx.strokeStyle = "#0077cc";
+  ctx.stroke();
+}
 </script>
 </body>
 </html>
