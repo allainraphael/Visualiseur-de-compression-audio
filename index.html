@@ -4,57 +4,16 @@
 <meta charset="UTF-8">
 <title>Visualiseur Compression Audio Avancé</title>
 <style>
-body {
-  font-family: Arial, sans-serif;
-  margin: 0;
-  padding: 20px;
-  background: #000;
-  color: #eee;
-}
-.grid-container {
-  display: grid;
-  grid-template-columns: 320px 1fr;
-  gap: 20px;
-}
-.controls, #compGraphContainer {
-  background: #111;
-  padding: 10px;
-  border: 1px solid #555;
-  border-radius: 5px;
-  margin-bottom: 10px;
-}
-.controls label {
-  display: inline-block;
-  width: 80px;
-}
-.controls input[type="range"], .controls input[type="number"] {
-  width: 150px;
-}
-button {
-  margin: 5px 5px 5px 0;
-  padding: 5px 10px;
-}
-canvas {
-  border: 1px solid #555;
-  background: #111;
-  display: block;
-  margin: 10px 0;
-}
-.zoom-nav {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 10px;
-}
-.flex-graph {
-  display: flex;
-  align-items: flex-start;
-}
-#grMeter {
-  width: 20px !important;
-  height: 280px !important;
-  margin-left: 10px;
-}
+body { font-family: Arial; margin:0; padding:20px; background:#000; color:#eee; }
+.grid-container { display:grid; grid-template-columns:320px 1fr; gap:20px; }
+.controls, #compGraphContainer { background:#111; padding:10px; border:1px solid #555; border-radius:5px; margin-bottom:10px; }
+.controls label { display:inline-block; width:80px; }
+.controls input[type=range], .controls input[type=number] { width:150px; }
+button { margin:5px 5px 5px 0; padding:5px 10px; }
+canvas { border:1px solid #555; background:#111; display:block; margin:10px 0; }
+.zoom-nav { display:flex; align-items:center; gap:10px; margin-bottom:10px; }
+.flex-graph { display:flex; align-items:flex-start; }
+#grMeter { width:20px !important; height:280px !important; margin-left:10px; }
 </style>
 </head>
 <body>
@@ -67,25 +26,15 @@ canvas {
   <div>
     <div class="controls">
       <label>Threshold:</label>
-      <input type="range" id="threshold" min="-60" max="0" value="0" step="1">
-      <span id="threshVal">0 dB</span><br>
-
+      <input type="range" id="threshold" min="-60" max="0" value="0" step="1"><span id="threshVal">0 dB</span><br>
       <label>Ratio:</label>
-      <input type="range" id="ratio" min="1" max="20" value="1" step="0.5">
-      <span id="ratioVal">1:1</span><br>
-
+      <input type="range" id="ratio" min="1" max="20" value="1" step="0.5"><span id="ratioVal">1:1</span><br>
       <label>Attack:</label>
-      <input type="range" id="attack" min="0" max="100" value="0">
-      <span id="attackVal">0 ms</span><br>
-
+      <input type="range" id="attack" min="0" max="100" value="0"><span id="attackVal">0 ms</span><br>
       <label>Release:</label>
-      <input type="range" id="release" min="0" max="100" value="0">
-      <span id="releaseVal">0 ms</span><br>
-
+      <input type="range" id="release" min="0" max="100" value="0"><span id="releaseVal">0 ms</span><br>
       <label>Makeup:</label>
-      <input type="range" id="makeup" min="0" max="24" value="0" step="1">
-      <span id="makeupVal">0 dB</span><br><br>
-
+      <input type="range" id="makeup" min="0" max="24" value="0" step="1"><span id="makeupVal">0 dB</span><br><br>
       <button id="playPause">▶️ Lecture</button>
       <button id="loopBtn">🔁 Boucle ON</button>
     </div>
@@ -103,12 +52,9 @@ canvas {
   <div class="waveform-container">
     <div class="zoom-nav">
       <label>Zoom:</label>
-      <input type="range" id="zoom" min="1" max="20" value="1" step="1">
-      <span id="zoomVal">1x</span>
-
+      <input type="range" id="zoom" min="1" max="20" value="1" step="1"><span id="zoomVal">1x</span>
       <label>Position:</label>
-      <input type="range" id="position" min="0" max="100" value="0" step="1">
-      <span id="posVal">0%</span>
+      <input type="range" id="position" min="0" max="100" value="0" step="1"><span id="posVal">0%</span>
     </div>
 
     <h3>Waveform</h3>
@@ -117,80 +63,60 @@ canvas {
 </div>
 
 <script>
-let audioContext, buffer, sourceNode, compressorNode, gainNode, analyserNode;
+let audioContext, buffer, sourceNode, compressorNode, gainNode;
 let isPlaying = false, loopEnabled = true;
 let samples;
-let compState = { env:0 };
+const grState = { env: 0 };
 
 const fileInput = document.getElementById("fileInput");
 const playPauseBtn = document.getElementById("playPause");
 const loopBtn = document.getElementById("loopBtn");
-
 const threshSlider = document.getElementById("threshold");
 const ratioSlider = document.getElementById("ratio");
 const attackSlider = document.getElementById("attack");
 const releaseSlider = document.getElementById("release");
 const makeupSlider = document.getElementById("makeup");
-
 const zoomSlider = document.getElementById("zoom");
 const posSlider = document.getElementById("position");
 
 const canvasWaveform = document.getElementById("canvasWaveform");
 const grCanvas = document.getElementById("grMeter");
 const compGraph = document.getElementById("compGraph");
-
 const ctxWaveform = canvasWaveform.getContext("2d");
 const ctxGR = grCanvas.getContext("2d");
 const ctxGraph = compGraph.getContext("2d");
 
-function sliderToMs(value){
-    const min=0.1;
-    const max=1000;
-    const normalized = value/100;
-    return min*Math.pow(max/min, normalized);
-}
+function sliderToMs(value){ const min=0.1,max=1000; const n=value/100; return min*Math.pow(max/min,n); }
 
 fileInput.addEventListener("change", handleFile);
 playPauseBtn.addEventListener("click", togglePlay);
 loopBtn.addEventListener("click", toggleLoop);
-
-threshSlider.addEventListener("input",updateCompressor);
-ratioSlider.addEventListener("input",updateCompressor);
-attackSlider.addEventListener("input",()=>{document.getElementById("attackVal").textContent=Math.round(sliderToMs(attackSlider.value))+" ms";applyCompressorSettings();});
-releaseSlider.addEventListener("input",()=>{document.getElementById("releaseVal").textContent=Math.round(sliderToMs(releaseSlider.value))+" ms";applyCompressorSettings();});
-makeupSlider.addEventListener("input",()=>{
-    document.getElementById("makeupVal").textContent=makeupSlider.value+" dB";
-    if(gainNode) gainNode.gain.value = Math.pow(10, parseFloat(makeupSlider.value)/20);
-    redraw();
-});
-
+threshSlider.addEventListener("input",()=>{updateCompressorValuesDisplay(); updateCompressor();});
+ratioSlider.addEventListener("input",()=>{updateCompressorValuesDisplay(); updateCompressor();});
+attackSlider.addEventListener("input",()=>{document.getElementById("attackVal").textContent=Math.round(sliderToMs(attackSlider.value))+" ms"; updateCompressor();});
+releaseSlider.addEventListener("input",()=>{document.getElementById("releaseVal").textContent=Math.round(sliderToMs(releaseSlider.value))+" ms"; updateCompressor();});
+makeupSlider.addEventListener("input",()=>{document.getElementById("makeupVal").textContent=makeupSlider.value+" dB"; if(gainNode) gainNode.gain.value = Math.pow(10,makeupSlider.value/20); redraw();});
 zoomSlider.addEventListener("input", redraw);
 posSlider.addEventListener("input", redraw);
 
 async function handleFile(e){
-  const file = e.target.files[0];
+  const file=e.target.files[0];
   if(!file) return;
-  if(!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
-
+  if(!audioContext) audioContext=new (window.AudioContext || window.webkitAudioContext)();
   threshSlider.value=0; ratioSlider.value=1; attackSlider.value=0; releaseSlider.value=0; makeupSlider.value=0;
-  updateCompressorValuesDisplay();
-  compState.env=0;
+  updateCompressorValuesDisplay(); grState.env=0;
 
   const arrayBuffer = await file.arrayBuffer();
   buffer = await audioContext.decodeAudioData(arrayBuffer);
   samples = buffer.getChannelData(0).slice();
-
   redraw();
   updateCompressor();
   if(isPlaying) playSource();
 }
 
 function togglePlay(){
-  if(isPlaying){
-    sourceNode.stop();
-    isPlaying=false;
-    playPauseBtn.textContent="▶️ Lecture";
-  } else playSource();
+  if(isPlaying){ sourceNode.stop(); isPlaying=false; playPauseBtn.textContent="▶️ Lecture"; }
+  else playSource();
 }
 
 function playSource(){
@@ -205,15 +131,11 @@ function playSource(){
   applyCompressorSettings();
 
   gainNode = audioContext.createGain();
-  gainNode.gain.value = Math.pow(10, parseFloat(makeupSlider.value)/20);
-
-  analyserNode = audioContext.createAnalyser();
-  analyserNode.fftSize=2048;
+  gainNode.gain.value = Math.pow(10,makeupSlider.value/20);
 
   sourceNode.connect(compressorNode);
   compressorNode.connect(gainNode);
-  gainNode.connect(analyserNode);
-  analyserNode.connect(audioContext.destination);
+  gainNode.connect(audioContext.destination);
 
   sourceNode.start(0);
   isPlaying=true;
@@ -224,19 +146,13 @@ function playSource(){
 
 function applyCompressorSettings(){
   if(!compressorNode) return;
-  compressorNode.threshold.value = parseFloat(threshSlider.value);
-  compressorNode.ratio.value = parseFloat(ratioSlider.value);
-  compressorNode.attack.value = sliderToMs(parseFloat(attackSlider.value))/1000;
-  compressorNode.release.value = sliderToMs(parseFloat(releaseSlider.value))/1000;
+  compressorNode.threshold.value=parseFloat(threshSlider.value);
+  compressorNode.ratio.value=parseFloat(ratioSlider.value);
+  compressorNode.attack.value=sliderToMs(parseFloat(attackSlider.value))/1000;
+  compressorNode.release.value=sliderToMs(parseFloat(releaseSlider.value))/1000;
 }
 
-function updateCompressor(){
-  updateCompressorValuesDisplay();
-  applyCompressorSettings();
-  compState.env=0;
-  redraw();
-  drawCompGraph();
-}
+function updateCompressor(){ applyCompressorSettings(); redraw(); drawCompGraph(); }
 
 function updateCompressorValuesDisplay(){
   document.getElementById("threshVal").textContent=threshSlider.value+" dB";
@@ -247,132 +163,99 @@ function updateCompressorValuesDisplay(){
 }
 
 function redraw(){
-  const zoom = parseInt(zoomSlider.value);
-  const pos = parseInt(posSlider.value)/100;
+  const zoom=parseInt(zoomSlider.value);
+  const pos=parseInt(posSlider.value)/100;
   document.getElementById("zoomVal").textContent=zoom+"x";
   document.getElementById("posVal").textContent=Math.round(pos*100)+"%";
-
-  drawCombinedWaveform(ctxWaveform, samples, zoom, pos, canvasWaveform);
+  drawCombinedWaveform(ctxWaveform,samples,zoom,pos,canvasWaveform);
 }
 
-function drawCombinedWaveform(ctx, data, zoom, pos, canvas){
+function drawCombinedWaveform(ctx,data,zoom,pos,canvas){
   ctx.clearRect(0,0,canvas.width,canvas.height);
   if(!data || data.length===0) return;
 
-  const totalLength = data.length;
-  const segmentLength = Math.floor(totalLength/zoom);
-  let start = Math.floor(pos*(totalLength - segmentLength));
-  start = Math.max(0, Math.min(start, totalLength-1));
-  let end = Math.min(start+segmentLength, totalLength);
-  const step = Math.max(1, Math.floor((end-start)/canvas.width));
-
-  let peak = 0;
-  for(let i=start;i<end;i++){
-    const s=Math.abs(data[i]);
-    if(s>peak) peak=s;
-  }
+  const totalLength=data.length;
+  const segmentLength=Math.floor(totalLength/zoom);
+  let start=Math.floor(pos*(totalLength-segmentLength));
+  start=Math.max(0,Math.min(start,totalLength-1));
+  let end=Math.min(start+segmentLength,totalLength);
+  const step=Math.max(1,Math.floor((end-start)/canvas.width));
+  let peak=0;
+  for(let i=start;i<end;i++){ const s=Math.abs(data[i]); if(s>peak) peak=s; }
   if(peak===0) peak=1;
-
   const amp = canvas.height/2;
 
   // Waveform originale
   ctx.beginPath();
   for(let i=0;i<canvas.width;i++){
-    const segStart = start + i*step;
+    const segStart=start+i*step;
     let min=1,max=-1;
     for(let j=0;j<step;j++){
-      let idx = segStart+j;
-      if(idx>=totalLength) break;
-      let s = data[idx]/peak;
-      if(s<min) min=s;
-      if(s>max) max=s;
+      const idx=segStart+j; if(idx>=totalLength) break;
+      const s=data[idx]/peak; if(s<min) min=s; if(s>max) max=s;
     }
-    ctx.moveTo(i, amp+min*amp);
-    ctx.lineTo(i, amp+max*amp);
+    ctx.moveTo(i,amp+min*amp);
+    ctx.lineTo(i,amp+max*amp);
   }
-  ctx.strokeStyle="#44ccff";
-  ctx.stroke();
+  ctx.strokeStyle="#44ccff"; ctx.stroke();
 
-  // Waveform compressée avec make-up gain
-  ctx.beginPath();
-  let state={env:0};
+  // Waveform compressée + make up gain
+  ctx.beginPath(); let state={env:0};
   for(let i=0;i<canvas.width;i++){
-    const segStart = start + i*step;
+    const segStart=start+i*step;
     let min=1,max=-1;
     for(let j=0;j<step;j++){
-      let idx = segStart+j;
-      if(idx>=totalLength) break;
-      let s = compressSampleRealtime(data[idx],state)*Math.pow(10, parseFloat(makeupSlider.value)/20)/peak;
-      if(s<min) min=s;
-      if(s>max) max=s;
+      const idx=segStart+j; if(idx>=totalLength) break;
+      let s=compressSampleRealtime(data[idx],state)*Math.pow(10,makeupSlider.value/20)/peak;
+      if(s<min) min=s; if(s>max) max=s;
     }
-    ctx.moveTo(i, amp+min*amp);
-    ctx.lineTo(i, amp+max*amp);
+    ctx.moveTo(i,amp+min*amp); ctx.lineTo(i,amp+max*amp);
   }
-  ctx.strokeStyle="#ff8844";
-  ctx.stroke();
+  ctx.strokeStyle="#ff8844"; ctx.stroke();
 
-  // Réduction de gain (GR) 0dB en haut
+  // Réduction de gain (GR) avec 0 dB en haut
   ctx.beginPath();
+  let gr={env:0};
   for(let i=0;i<canvas.width;i++){
-    const segStart = start + i*step;
-    let maxReduction = 0;
+    const segStart=start+i*step;
+    let maxReduction=0;
     for(let j=0;j<step;j++){
-      let idx = segStart+j;
-      if(idx>=totalLength) break;
-      const s = data[idx];
-      const gainDb = compressSampleReduction(s, state);
-      if(gainDb < maxReduction) maxReduction = gainDb;
+      const idx=segStart+j; if(idx>=totalLength) break;
+      const r=compressSampleReduction(data[idx],gr);
+      if(r<maxReduction) maxReduction=r;
     }
-    const y = (-maxReduction/60)*canvas.height;
+    const y=(-maxReduction/60)*canvas.height; 
     if(i===0) ctx.moveTo(i,y); else ctx.lineTo(i,y);
   }
-  ctx.strokeStyle="rgba(255,0,0,0.5)";
-  ctx.lineWidth=2;
-  ctx.stroke();
+  ctx.strokeStyle="rgba(255,0,0,0.5)"; ctx.lineWidth=2; ctx.stroke();
 }
 
 function compressSampleRealtime(sample,state){
-    const threshold = parseFloat(threshSlider.value);
-    const ratio = parseFloat(ratioSlider.value);
-    const attack = sliderToMs(parseFloat(attackSlider.value))/1000;
-    const release = sliderToMs(parseFloat(releaseSlider.value))/1000;
-
-    const eps = 1e-8;
-    let dbSample = 20*Math.log10(Math.abs(sample)+eps);
-
-    let gainDb = 0;
-    if(dbSample > threshold){
-        gainDb = threshold + (dbSample-threshold)/ratio - dbSample;
-    }
-
-    const coeff = (gainDb < state.env) 
-                  ? Math.exp(-1/(audioContext.sampleRate*attack || 1e-3))
-                  : Math.exp(-1/(audioContext.sampleRate*release || 1e-3));
-    state.env = state.env*coeff + gainDb*(1-coeff);
-
-    return sample*Math.pow(10,state.env/20);
+  const threshold=parseFloat(threshSlider.value);
+  const ratio=parseFloat(ratioSlider.value);
+  const attack=sliderToMs(parseFloat(attackSlider.value))/1000;
+  const release=sliderToMs(parseFloat(releaseSlider.value))/1000;
+  const eps=1e-8;
+  let dbSample=20*Math.log10(Math.abs(sample)+eps);
+  let gainDb=0;
+  if(dbSample>threshold) gainDb=threshold+(dbSample-threshold)/ratio-dbSample;
+  const coeff=(gainDb<state.env)?Math.exp(-1/(audioContext.sampleRate*attack||1e-3)):Math.exp(-1/(audioContext.sampleRate*release||1e-3));
+  state.env=state.env*coeff+gainDb*(1-coeff);
+  return sample*Math.pow(10,(state.env)/20);
 }
 
 function compressSampleReduction(sample,state){
-    const threshold = parseFloat(threshSlider.value);
-    const ratio = parseFloat(ratioSlider.value);
-    const attack = sliderToMs(parseFloat(attackSlider.value))/1000;
-    const release = sliderToMs(parseFloat(releaseSlider.value))/1000;
-
-    const eps = 1e-8;
-    let dbSample = 20*Math.log10(Math.abs(sample)+eps);
-
-    let gainDb = 0;
-    if(dbSample > threshold){
-        gainDb = threshold + (dbSample-threshold)/ratio - dbSample;
-    }
-
-    const coeff = (gainDb < state.env) 
-                  ? Math.exp(-1/(audioContext.sampleRate*attack || 1e-3))
-                  : Math.exp(-1/(audioContext.sampleRate*release || 1e-3));
-    state.env = state.env*coeff + gainDb*(1-coeff);
-    return state.env;
+  const threshold=parseFloat(threshSlider.value);
+  const ratio=parseFloat(ratioSlider.value);
+  const attack=sliderToMs(parseFloat(attackSlider.value))/1000;
+  const release=sliderToMs(parseFloat(releaseSlider.value))/1000;
+  const eps=1e-8;
+  let dbSample=20*Math.log10(Math.abs(sample)+eps);
+  let gainDb=0;
+  if(dbSample>threshold) gainDb=threshold+(dbSample-threshold)/ratio-dbSample;
+  const coeff=(gainDb<state.env)?Math.exp(-1/(audioContext.sampleRate*attack||1e-3)):Math.exp(-1/(audioContext.sampleRate*release||1e-3));
+  state.env=state.env*coeff+gainDb*(1-coeff);
+  return state.env;
 }
 
 function drawCompGraph(){
@@ -382,20 +265,11 @@ function drawCompGraph(){
   const width=compGraph.width;
   const height=compGraph.height;
   const threshX=(threshold+60)/60*width;
-
-  ctxGraph.strokeStyle="#ff0";
-  ctxGraph.beginPath();
-  ctxGraph.moveTo(threshX,0);
-  ctxGraph.lineTo(threshX,height);
-  ctxGraph.stroke();
-
-  ctxGraph.strokeStyle="#0f0";
-  ctxGraph.beginPath();
+  ctxGraph.strokeStyle="#ff0"; ctxGraph.beginPath(); ctxGraph.moveTo(threshX,0); ctxGraph.lineTo(threshX,height); ctxGraph.stroke();
+  ctxGraph.strokeStyle="#0f0"; ctxGraph.beginPath();
   for(let x=0;x<=width;x++){
     let input=x/width*60-60;
-    let output;
-    if(input<threshold) output=input;
-    else output=threshold+(input-threshold)/ratio;
+    let output=(input<threshold)?input:threshold+(input-threshold)/ratio;
     const y=height-((output+60)/60)*height;
     if(x===0) ctxGraph.moveTo(x,y); else ctxGraph.lineTo(x,y);
   }
@@ -404,20 +278,29 @@ function drawCompGraph(){
 
 function drawGRRealtime(){
   requestAnimationFrame(drawGRRealtime);
+  if(!samples) return;
+  const zoom=parseInt(zoomSlider.value);
+  const pos=parseInt(posSlider.value)/100;
+  const totalLength=samples.length;
+  const segmentLength=Math.floor(totalLength/zoom);
+  let start=Math.floor(pos*(totalLength-segmentLength));
+  start=Math.max(0,Math.min(start,totalLength-1));
+  let end=Math.min(start+segmentLength,totalLength);
+  const step=Math.max(1,Math.floor((end-start)/canvasWaveform.width));
+  let maxReduction=0;
+  for(let i=start;i<end;i+=step){
+    const r=compressSampleReduction(samples[i],grState);
+    if(r<maxReduction) maxReduction=r;
+  }
   ctxGR.clearRect(0,0,grCanvas.width,grCanvas.height);
-  if(!compressorNode) return;
-  let reduction = compressorNode.reduction ? compressorNode.reduction : 0;
-  let height = grCanvas.height;
-  let y = (reduction/60) * height; // 0 dB en haut
-  ctxGR.fillStyle="red";
-  ctxGR.fillRect(0,0,grCanvas.width,y);
-  redraw();
+  const y=(-maxReduction/60)*grCanvas.height;
+  ctxGR.fillStyle="red"; ctxGR.fillRect(0,0,grCanvas.width,y);
 }
 
 function toggleLoop(){
-  loopEnabled = !loopEnabled;
-  loopBtn.textContent = loopEnabled ? "🔁 Boucle ON":"🔁 Boucle OFF";
-  if(sourceNode) sourceNode.loop = loopEnabled;
+  loopEnabled=!loopEnabled;
+  loopBtn.textContent=loopEnabled?"🔁 Boucle ON":"🔁 Boucle OFF";
+  if(sourceNode) sourceNode.loop=loopEnabled;
 }
 </script>
 
