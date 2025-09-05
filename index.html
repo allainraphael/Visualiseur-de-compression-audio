@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
-<title>Visualiseur Compression Audio Simplifié</title>
+<title>Visualiseur Compression Audio Avancé</title>
 <style>
 body {
   font-family: Arial, sans-serif;
@@ -124,10 +124,11 @@ canvas {
 </div>
 
 <script>
-let audioContext, buffer, sourceNode, compressorNode, makeupNode;
+let audioContext, buffer, sourceNode, compressorNode;
 let isPlaying = false, loopEnabled = true;
 let analyserNode;
-let samples, compressedSamples;
+
+let samples;
 
 // DOM
 const fileInput = document.getElementById("fileInput");
@@ -175,11 +176,9 @@ async function handleFile(e){
   buffer = await audioContext.decodeAudioData(arrayBuffer);
 
   samples = buffer.getChannelData(0);
-  compressedSamples = samples.slice();
 
   drawWaveform(ctxOrig, samples, 1,0,canvasOriginal,"#44ccff");
-  drawWaveform(ctxComp, compressedSamples, 1,0,canvasCompressed,"#ff8844");
-
+  redraw(); // met à jour compressé
   updateCompressor();
 }
 
@@ -199,16 +198,16 @@ function playSource(){
   sourceNode.loop = loopEnabled;
 
   compressorNode = audioContext.createDynamicsCompressor();
-  makeupNode = audioContext.createGain();
 
+  // Désactiver make-up automatique
+  // makeupNode n'est plus utilisé
   applyCompressorSettings();
 
   analyserNode = audioContext.createAnalyser();
   analyserNode.fftSize=2048;
 
   sourceNode.connect(compressorNode);
-  compressorNode.connect(makeupNode);
-  makeupNode.connect(analyserNode);
+  compressorNode.connect(analyserNode);
   analyserNode.connect(audioContext.destination);
 
   sourceNode.start(0);
@@ -219,12 +218,11 @@ function playSource(){
 }
 
 function applyCompressorSettings(){
-  if(!compressorNode || !makeupNode) return;
+  if(!compressorNode) return;
   compressorNode.threshold.value = parseFloat(threshSlider.value);
   compressorNode.ratio.value = parseFloat(ratioSlider.value);
   compressorNode.attack.value = parseFloat(attackSlider.value);
   compressorNode.release.value = parseFloat(releaseSlider.value);
-  makeupNode.gain.value = Math.pow(10,parseFloat(makeupSlider.value)/20);
 }
 
 function updateCompressor(){
@@ -247,11 +245,12 @@ function redraw(){
   const pos = parseInt(posSlider.value)/100;
   document.getElementById("zoomVal").textContent=zoom+"x";
   document.getElementById("posVal").textContent=Math.round(pos*100)+"%";
+
   drawWaveform(ctxOrig, samples, zoom, pos, canvasOriginal,"#44ccff");
-  drawWaveform(ctxComp, compressedSamples, zoom, pos, canvasCompressed,"#ff8844");
+  drawWaveform(ctxComp, samples, zoom, pos, canvasCompressed,"#ff8844", true); // compressé approximatif
 }
 
-function drawWaveform(ctx,data,zoom,pos,canvas,color){
+function drawWaveform(ctx,data,zoom,pos,canvas,color,isCompressed=false){
   ctx.clearRect(0,0,canvas.width,canvas.height);
   if(!data) return;
   const segmentLength = Math.floor(data.length/zoom);
@@ -264,7 +263,10 @@ function drawWaveform(ctx,data,zoom,pos,canvas,color){
     const segStart=start+i*step;
     let min=1,max=-1;
     for(let j=0;j<step;j++){
-      const s=data[segStart+j]||0;
+      let s=data[segStart+j]||0;
+      if(isCompressed){
+        s = compressSample(s);
+      }
       if(s<min) min=s;
       if(s>max) max=s;
     }
@@ -282,11 +284,21 @@ function drawWaveform(ctx,data,zoom,pos,canvas,color){
   }
 }
 
+function compressSample(sample){
+  let threshold = parseFloat(threshSlider.value)/60; // normaliser
+  let ratio = parseFloat(ratioSlider.value);
+  if(sample > threshold){
+    sample = threshold + (sample-threshold)/ratio;
+  } else if(sample < -threshold){
+    sample = -threshold + (sample+threshold)/ratio;
+  }
+  return sample;
+}
+
 function drawCompGraph(){
   ctxGraph.clearRect(0,0,compGraph.width,compGraph.height);
   const threshold=parseFloat(threshSlider.value);
   const ratio=parseFloat(ratioSlider.value);
-  const makeUp=parseFloat(makeupSlider.value);
   const width=compGraph.width;
   const height=compGraph.height;
   const threshX=(threshold+60)/60*width;
@@ -302,8 +314,8 @@ function drawCompGraph(){
   for(let x=0;x<=width;x++){
     let input=x/width*60-60;
     let output;
-    if(input<threshold) output=input+makeUp;
-    else output=threshold+(input-threshold)/ratio+makeUp;
+    if(input<threshold) output=input;
+    else output=threshold+(input-threshold)/ratio;
     const y=height-((output+60)/60)*height;
     if(x===0) ctxGraph.moveTo(x,y); else ctxGraph.lineTo(x,y);
   }
