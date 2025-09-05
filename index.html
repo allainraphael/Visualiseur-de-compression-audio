@@ -4,16 +4,57 @@
 <meta charset="UTF-8">
 <title>Visualiseur Compression Audio Avancé</title>
 <style>
-body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background: #000; color: #eee; }
-.grid-container { display: grid; grid-template-columns: 320px 1fr; gap: 20px; }
-.controls, #compGraphContainer { background: #111; padding: 10px; border: 1px solid #555; border-radius: 5px; margin-bottom: 10px; }
-.controls label { display: inline-block; width: 80px; }
-.controls input[type="range"], .controls input[type="number"] { width: 150px; }
-button { margin: 5px 5px 5px 0; padding: 5px 10px; }
-canvas { border: 1px solid #555; background: #111; display: block; margin: 10px 0; }
-.zoom-nav { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
-.flex-graph { display: flex; align-items: flex-start; }
-#grMeter { width: 20px !important; height: 280px !important; margin-left: 10px; }
+body {
+  font-family: Arial, sans-serif;
+  margin: 0;
+  padding: 20px;
+  background: #000;
+  color: #eee;
+}
+.grid-container {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  gap: 20px;
+}
+.controls, #compGraphContainer {
+  background: #111;
+  padding: 10px;
+  border: 1px solid #555;
+  border-radius: 5px;
+  margin-bottom: 10px;
+}
+.controls label {
+  display: inline-block;
+  width: 80px;
+}
+.controls input[type="range"], .controls input[type="number"] {
+  width: 150px;
+}
+button {
+  margin: 5px 5px 5px 0;
+  padding: 5px 10px;
+}
+canvas {
+  border: 1px solid #555;
+  background: #111;
+  display: block;
+  margin: 10px 0;
+}
+.zoom-nav {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.flex-graph {
+  display: flex;
+  align-items: flex-start;
+}
+#grMeter {
+  width: 20px !important;
+  height: 280px !important;
+  margin-left: 10px;
+}
 </style>
 </head>
 <body>
@@ -76,11 +117,10 @@ canvas { border: 1px solid #555; background: #111; display: block; margin: 10px 
 </div>
 
 <script>
-let audioContext, buffer, sourceNode, compressorNode, makeUpGainNode;
+let audioContext, buffer, sourceNode, compressorNode, gainNode;
 let isPlaying = false, loopEnabled = true;
 let samples;
-let grState = {env:0};
-let compGraphState = {env:0};
+let compState = { env:0 };
 
 const fileInput = document.getElementById("fileInput");
 const playPauseBtn = document.getElementById("playPause");
@@ -103,6 +143,7 @@ const ctxWaveform = canvasWaveform.getContext("2d");
 const ctxGR = grCanvas.getContext("2d");
 const ctxGraph = compGraph.getContext("2d");
 
+// Conversion non linéaire sliders attack/release
 function sliderToMs(value){
     const min=0.1;
     const max=1000;
@@ -114,11 +155,21 @@ fileInput.addEventListener("change", handleFile);
 playPauseBtn.addEventListener("click", togglePlay);
 loopBtn.addEventListener("click", toggleLoop);
 
-threshSlider.addEventListener("input", updateCompressor);
-ratioSlider.addEventListener("input", updateCompressor);
-makeupSlider.addEventListener("input", updateCompressor);
-attackSlider.addEventListener("input",()=>{document.getElementById("attackVal").textContent=Math.round(sliderToMs(attackSlider.value))+" ms"; updateCompressor();});
-releaseSlider.addEventListener("input",()=>{document.getElementById("releaseVal").textContent=Math.round(sliderToMs(releaseSlider.value))+" ms"; updateCompressor();});
+threshSlider.addEventListener("input",updateCompressor);
+ratioSlider.addEventListener("input",updateCompressor);
+makeupSlider.addEventListener("input",updateCompressor);
+
+attackSlider.addEventListener("input",()=>{
+    document.getElementById("attackVal").textContent=Math.round(sliderToMs(attackSlider.value))+" ms";
+    applyCompressorSettings();
+    redraw();
+});
+releaseSlider.addEventListener("input",()=>{
+    document.getElementById("releaseVal").textContent=Math.round(sliderToMs(releaseSlider.value))+" ms";
+    applyCompressorSettings();
+    redraw();
+});
+
 zoomSlider.addEventListener("input", redraw);
 posSlider.addEventListener("input", redraw);
 
@@ -127,11 +178,11 @@ async function handleFile(e){
   if(!file) return;
   if(!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
 
-  // Reset
-  threshSlider.value=0; ratioSlider.value=1; attackSlider.value=0; releaseSlider.value=0; makeupSlider.value=0;
+  // Réinitialiser paramètres
+  threshSlider.value=0; ratioSlider.value=1;
+  attackSlider.value=0; releaseSlider.value=0; makeupSlider.value=0;
   updateCompressorValuesDisplay();
-  grState.env = 0;
-  compGraphState.env = 0;
+  compState.env = 0;
 
   const arrayBuffer = await file.arrayBuffer();
   buffer = await audioContext.decodeAudioData(arrayBuffer);
@@ -161,18 +212,14 @@ function playSource(){
   sourceNode.loop = loopEnabled;
 
   compressorNode = audioContext.createDynamicsCompressor();
-  makeUpGainNode = audioContext.createGain();
-  makeUpGainNode.gain.value = Math.pow(10, parseFloat(makeupSlider.value)/20);
+  gainNode = audioContext.createGain();
 
   applyCompressorSettings();
-
-  const analyserNode = audioContext.createAnalyser();
-  analyserNode.fftSize=2048;
+  gainNode.gain.value = Math.pow(10, parseFloat(makeupSlider.value)/20);
 
   sourceNode.connect(compressorNode);
-  compressorNode.connect(makeUpGainNode);
-  makeUpGainNode.connect(analyserNode);
-  analyserNode.connect(audioContext.destination);
+  compressorNode.connect(gainNode);
+  gainNode.connect(audioContext.destination);
 
   sourceNode.start(0);
   isPlaying=true;
@@ -187,14 +234,14 @@ function applyCompressorSettings(){
   compressorNode.ratio.value = parseFloat(ratioSlider.value);
   compressorNode.attack.value = sliderToMs(parseFloat(attackSlider.value))/1000;
   compressorNode.release.value = sliderToMs(parseFloat(releaseSlider.value))/1000;
-  if(makeUpGainNode) makeUpGainNode.gain.value = Math.pow(10, parseFloat(makeupSlider.value)/20);
+
+  if(gainNode) gainNode.gain.value = Math.pow(10, parseFloat(makeupSlider.value)/20);
 }
 
 function updateCompressor(){
   updateCompressorValuesDisplay();
   applyCompressorSettings();
-  grState.env=0;
-  compGraphState.env=0;
+  compState.env = 0;
   redraw();
   drawCompGraph();
 }
@@ -212,101 +259,139 @@ function redraw(){
   const pos = parseInt(posSlider.value)/100;
   document.getElementById("zoomVal").textContent=zoom+"x";
   document.getElementById("posVal").textContent=Math.round(pos*100)+"%";
+
   drawCombinedWaveform(ctxWaveform, samples, zoom, pos, canvasWaveform);
 }
 
 function drawCombinedWaveform(ctx, data, zoom, pos, canvas){
-  ctx.clearRect(0,0,canvas.width,canvas.height);
-  if(!data || data.length===0) return;
-  const totalLength = data.length;
-  const segmentLength = Math.floor(totalLength/zoom);
-  let start = Math.floor(pos*(totalLength - segmentLength));
-  start = Math.max(0, Math.min(start, totalLength-1));
-  let end = Math.min(start+segmentLength, totalLength);
-  const step = Math.max(1, Math.floor((end-start)/canvas.width));
-  const amp = canvas.height/2;
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    if(!data || data.length===0) return;
 
-  // Waveform originale
-  ctx.beginPath();
-  for(let i=0;i<canvas.width;i++){
-    const segStart=start+i*step;
-    let min=1,max=-1;
-    for(let j=0;j<step;j++){
-      let idx = segStart+j; if(idx>=totalLength) break;
-      let s = data[idx]; if(s<min) min=s; if(s>max) max=s;
-    }
-    ctx.moveTo(i, amp+min*amp);
-    ctx.lineTo(i, amp+max*amp);
-  }
-  ctx.strokeStyle="#44ccff"; ctx.stroke();
+    const totalLength = data.length;
+    const segmentLength = Math.floor(totalLength/zoom);
+    let start = Math.floor(pos*(totalLength - segmentLength));
+    start = Math.max(0, Math.min(start, totalLength-1));
+    let end = Math.min(start+segmentLength, totalLength);
+    const step = Math.max(1, Math.floor((end-start)/canvas.width));
 
-  // Waveform compressée
-  ctx.beginPath();
-  let state={env:0};
-  for(let i=0;i<canvas.width;i++){
-    const segStart=start+i*step;
-    let min=1,max=-1;
-    for(let j=0;j<step;j++){
-      let idx = segStart+j; if(idx>=totalLength) break;
-      let s = compressSampleRealtime(data[idx],state)*Math.pow(10, parseFloat(makeupSlider.value)/20);
-      if(s<min) min=s; if(s>max) max=s;
+    let peak = 0;
+    for(let i=start;i<end;i++){
+        const absVal = Math.abs(data[i]);
+        if(absVal>peak) peak=absVal;
     }
-    ctx.moveTo(i, amp+min*amp);
-    ctx.lineTo(i, amp+max*amp);
-  }
-  ctx.strokeStyle="#ff8844"; ctx.stroke();
+    if(peak===0) peak=1;
+    const amp = canvas.height/2;
 
-  // GR waveform
-  ctx.beginPath();
-  let grLocalState={env:0};
-  for(let i=0;i<canvas.width;i++){
-    const segStart=start+i*step;
-    let maxReduction=0;
-    for(let j=0;j<step;j++){
-      let idx=segStart+j; if(idx>=totalLength) break;
-      const s = data[idx];
-      const gainDb = compressSampleRealtime(s,grLocalState, true); // true: return gain reduction
-      if(gainDb < maxReduction) maxReduction=gainDb;
+    // Waveform originale
+    ctx.beginPath();
+    for(let i=0;i<canvas.width;i++){
+        const segStart = start + i*step;
+        let min=1, max=-1;
+        for(let j=0;j<step;j++){
+            let idx = segStart+j;
+            if(idx>=totalLength) break;
+            let s = data[idx]/peak;
+            if(s<min) min=s;
+            if(s>max) max=s;
+        }
+        ctx.moveTo(i, amp+min*amp);
+        ctx.lineTo(i, amp+max*amp);
     }
-    const y = (-maxReduction/60)*canvas.height;
-    if(i===0) ctx.moveTo(i,y); else ctx.lineTo(i,y);
-  }
-  ctx.strokeStyle="rgba(255,0,0,0.5)";
-  ctx.lineWidth=2; ctx.stroke();
+    ctx.strokeStyle="#44ccff";
+    ctx.stroke();
+
+    // Waveform compressée avec make-up gain
+    const makeupGain = Math.pow(10, parseFloat(makeupSlider.value)/20);
+    ctx.beginPath();
+    let state = { env:0 };
+    for(let i=0;i<canvas.width;i++){
+        const segStart = start + i*step;
+        let min=1, max=-1;
+        for(let j=0;j<step;j++){
+            const idx = segStart+j;
+            if(idx>=totalLength) break;
+            let s = compressSampleRealtime(data[idx], state) * makeupGain;
+            if(s<min) min=s;
+            if(s>max) max=s;
+        }
+        ctx.moveTo(i, amp+min*amp);
+        ctx.lineTo(i, amp+max*amp);
+    }
+    ctx.strokeStyle="#ff8844";
+    ctx.stroke();
+
+    // GR local
+    ctx.beginPath();
+    for(let i=0;i<canvas.width;i++){
+        const segStart = start + i*step;
+        let maxReduction = 0;
+        for(let j=0;j<step;j++){
+            const idx = segStart+j;
+            if(idx>=totalLength) break;
+            const s = data[idx];
+            const gainDb = compressSampleGR(s);
+            if(gainDb<maxReduction) maxReduction = gainDb;
+        }
+        const y = (-maxReduction/60)*canvas.height; 
+        if(i===0) ctx.moveTo(i,y); else ctx.lineTo(i,y);
+    }
+    ctx.strokeStyle="rgba(255,0,0,0.5)";
+    ctx.lineWidth=2;
+    ctx.stroke();
 }
 
-function compressSampleRealtime(sample,state, returnGain=false){
+function compressSampleGR(sample){
+    const threshold = parseFloat(threshSlider.value);
+    const ratio = parseFloat(ratioSlider.value);
+    let dbSample = 20*Math.log10(Math.abs(sample)+1e-8);
+    let gainDb=0;
+    if(dbSample>threshold){
+        gainDb = threshold + (dbSample-threshold)/ratio - dbSample;
+    }
+    return gainDb;
+}
+
+function compressSampleRealtime(sample,state){
     const threshold = parseFloat(threshSlider.value);
     const ratio = parseFloat(ratioSlider.value);
     const attack = sliderToMs(parseFloat(attackSlider.value))/1000;
     const release = sliderToMs(parseFloat(releaseSlider.value))/1000;
-    const eps = 1e-8;
-    let dbSample = 20*Math.log10(Math.abs(sample)+eps);
-    let gainDb = 0;
-    if(dbSample>threshold) gainDb = threshold + (dbSample-threshold)/ratio - dbSample;
+
+    const eps=1e-8;
+    let dbSample=20*Math.log10(Math.abs(sample)+eps);
+    let gainDb=0;
+    if(dbSample>threshold){
+        gainDb = threshold + (dbSample-threshold)/ratio - dbSample;
+    }
+
     const coeff = (gainDb<state.env) ? Math.exp(-1/(audioContext.sampleRate*attack||1e-3))
                                      : Math.exp(-1/(audioContext.sampleRate*release||1e-3));
     state.env = state.env*coeff + gainDb*(1-coeff);
-    if(returnGain) return state.env;
-    return sample*Math.pow(10,state.env/20);
+
+    const linearGain = Math.pow(10,state.env/20);
+    return sample*linearGain;
 }
 
 function drawCompGraph(){
   ctxGraph.clearRect(0,0,compGraph.width,compGraph.height);
   const threshold=parseFloat(threshSlider.value);
   const ratio=parseFloat(ratioSlider.value);
-  const width=compGraph.width, height=compGraph.height;
+  const width=compGraph.width;
+  const height=compGraph.height;
   const threshX=(threshold+60)/60*width;
 
   ctxGraph.strokeStyle="#ff0";
-  ctxGraph.beginPath(); ctxGraph.moveTo(threshX,0); ctxGraph.lineTo(threshX,height); ctxGraph.stroke();
+  ctxGraph.beginPath();
+  ctxGraph.moveTo(threshX,0);
+  ctxGraph.lineTo(threshX,height);
+  ctxGraph.stroke();
 
-  ctxGraph.strokeStyle="#0f0"; ctxGraph.beginPath();
+  ctxGraph.strokeStyle="#0f0";
+  ctxGraph.beginPath();
   for(let x=0;x<=width;x++){
-    let input=x/width*60-60;
-    let output;
-    if(input<threshold) output=input; else output=threshold+(input-threshold)/ratio;
-    const y=height-((output+60)/60)*height;
+    let input = x/width*60-60;
+    let output = (input<threshold) ? input : threshold + (input-threshold)/ratio;
+    let y=height-((output+60)/60)*height;
     if(x===0) ctxGraph.moveTo(x,y); else ctxGraph.lineTo(x,y);
   }
   ctxGraph.stroke();
@@ -314,15 +399,21 @@ function drawCompGraph(){
 
 function drawGRRealtime(){
   requestAnimationFrame(drawGRRealtime);
-  if(!samples) return;
-  const step = Math.floor(samples.length/1000);
-  let reduction=0;
-  for(let i=0;i<samples.length;i+=step){
-    reduction=compressSampleRealtime(samples[i],grState,true);
-  }
   ctxGR.clearRect(0,0,grCanvas.width,grCanvas.height);
-  const y=(-reduction/60)*grCanvas.height;
-  ctxGR.fillStyle="red"; ctxGR.fillRect(0,0,grCanvas.width,y);
+  if(!buffer) return;
+  const state={env:0};
+  const step=Math.floor(buffer.length/canvasWaveform.width);
+  let maxReduction=0;
+  for(let i=0;i<canvasWaveform.width;i++){
+    const idx=i*step;
+    if(idx>=buffer.length) break;
+    let s = compressSampleRealtime(buffer.getChannelData(0)[idx], state);
+    let gainDb = compressSampleGR(buffer.getChannelData(0)[idx]);
+    if(gainDb<maxReduction) maxReduction=gainDb;
+  }
+  let y = (-maxReduction/60)*grCanvas.height;
+  ctxGR.fillStyle="red";
+  ctxGR.fillRect(0,0,grCanvas.width,y);
 }
 
 function toggleLoop(){
