@@ -117,7 +117,7 @@ canvas {
 </div>
 
 <script>
-let audioContext, buffer, sourceNode, compressorNode, analyserNode;
+let audioContext, buffer, sourceNode, compressorNode, makeupGainNode, analyserNode;
 let isPlaying = false, loopEnabled = true;
 let samples;
 let compState = { env:0 };
@@ -157,8 +157,6 @@ loopBtn.addEventListener("click", toggleLoop);
 
 threshSlider.addEventListener("input",updateCompressor);
 ratioSlider.addEventListener("input",updateCompressor);
-makeupSlider.addEventListener("input",updateCompressor);
-
 attackSlider.addEventListener("input",()=>{
     document.getElementById("attackVal").textContent=Math.round(sliderToMs(attackSlider.value))+" ms";
     applyCompressorSettings();
@@ -167,6 +165,12 @@ attackSlider.addEventListener("input",()=>{
 releaseSlider.addEventListener("input",()=>{
     document.getElementById("releaseVal").textContent=Math.round(sliderToMs(releaseSlider.value))+" ms";
     applyCompressorSettings();
+    redraw();
+});
+makeupSlider.addEventListener("input",()=>{
+    const gainValue = Math.pow(10, parseFloat(makeupSlider.value)/20);
+    if(makeupGainNode) makeupGainNode.gain.value = gainValue;
+    document.getElementById("makeupVal").textContent=makeupSlider.value+" dB";
     redraw();
 });
 
@@ -214,11 +218,16 @@ function playSource(){
   compressorNode = audioContext.createDynamicsCompressor();
   applyCompressorSettings();
 
+  // Makeup gain node
+  makeupGainNode = audioContext.createGain();
+  makeupGainNode.gain.value = Math.pow(10, parseFloat(makeupSlider.value)/20);
+
   analyserNode = audioContext.createAnalyser();
   analyserNode.fftSize=2048;
 
   sourceNode.connect(compressorNode);
-  compressorNode.connect(analyserNode);
+  compressorNode.connect(makeupGainNode);
+  makeupGainNode.connect(analyserNode);
   analyserNode.connect(audioContext.destination);
 
   sourceNode.start(0);
@@ -299,7 +308,7 @@ function drawCombinedWaveform(ctx, data, zoom, pos, canvas){
   ctx.strokeStyle="#44ccff";
   ctx.stroke();
 
-  // Waveform compressée
+  // Waveform compressée + makeup
   ctx.beginPath();
   let state={env:0};
   for(let i=0;i<canvas.width;i++){
@@ -319,8 +328,8 @@ function drawCombinedWaveform(ctx, data, zoom, pos, canvas){
   ctx.stroke();
 
   // Réduction de gain (GR) avec 0 dB en haut
-ctx.beginPath();
-for(let i=0;i<canvas.width;i++){
+  ctx.beginPath();
+  for(let i=0;i<canvas.width;i++){
     const segStart = start + i*step;
     let maxReduction = 0;
     for(let j=0;j<step;j++){
@@ -330,14 +339,12 @@ for(let i=0;i<canvas.width;i++){
       const gainDb = calcGainReduction(s);
       if(gainDb < maxReduction) maxReduction = gainDb;
     }
-    // 0 dB en haut, plus la réduction est grande plus y descend
-    const y = ( -maxReduction / 60 ) * canvas.height; 
+    const y = (-maxReduction/60) * canvas.height;
     if(i===0) ctx.moveTo(i,y); else ctx.lineTo(i,y);
-}
-ctx.strokeStyle="rgba(255,0,0,0.5)";
-ctx.lineWidth=2;
-ctx.stroke();
-
+  }
+  ctx.strokeStyle="rgba(255,0,0,0.5)";
+  ctx.lineWidth=2;
+  ctx.stroke();
 }
 
 function compressSampleRealtime(sample,state){
@@ -360,7 +367,8 @@ function compressSampleRealtime(sample,state){
     state.env = state.env*coeff + gainDb*(1-coeff);
 
     const linearGain = Math.pow(10,state.env/20);
-    return sample*linearGain;
+    const makeupGain = Math.pow(10, parseFloat(makeupSlider.value)/20);
+    return sample*linearGain*makeupGain;
 }
 
 function calcGainReduction(sample){
@@ -404,7 +412,7 @@ function drawGRRealtime(){
   if(!compressorNode) return;
   let reduction = compressorNode.reduction ? compressorNode.reduction : 0;
   let height = grCanvas.height;
-  let y = (reduction/60) * height; // 0 dB en haut, descend
+  let y = (reduction/60) * height;
   ctxGR.fillStyle="red";
   ctxGR.fillRect(0,0,grCanvas.width,y);
 }
