@@ -13,7 +13,7 @@ body {
 }
 .grid-container {
   display: grid;
-  grid-template-columns: 300px 1fr;
+  grid-template-columns: 320px 1fr;
   gap: 20px;
 }
 .controls, #compGraphContainer {
@@ -21,6 +21,7 @@ body {
   padding: 10px;
   border: 1px solid #555;
   border-radius: 5px;
+  margin-bottom: 10px;
 }
 .controls label {
   display: inline-block;
@@ -30,7 +31,7 @@ body {
   width: 150px;
 }
 button {
-  margin: 5px;
+  margin: 5px 5px 5px 0;
   padding: 5px 10px;
 }
 canvas {
@@ -42,6 +43,21 @@ canvas {
 .waveform-container {
   display: flex;
   flex-direction: column;
+}
+.zoom-nav {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+#grMeter {
+  width: 20px !important;
+  height: 280px !important;
+  margin-left: 10px;
+}
+.flex-graph {
+  display: flex;
+  align-items: flex-start;
 }
 </style>
 </head>
@@ -55,20 +71,20 @@ canvas {
   <div>
     <div class="controls">
       <label>Threshold:</label>
-      <input type="range" id="threshold" min="-60" max="0" value="-12" step="1">
-      <span id="threshVal">-12 dB</span><br>
+      <input type="range" id="threshold" min="-60" max="0" value="0" step="1">
+      <span id="threshVal">0 dB</span><br>
 
       <label>Ratio:</label>
-      <input type="range" id="ratio" min="1" max="20" value="4" step="0.5">
-      <span id="ratioVal">4:1</span><br>
+      <input type="range" id="ratio" min="1" max="20" value="1" step="0.5">
+      <span id="ratioVal">1:1</span><br>
 
       <label>Attack:</label>
-      <input type="range" id="attack" min="0" max="1" step="0.01" value="0.01">
-      <span id="attackVal">0.01 s</span><br>
+      <input type="range" id="attack" min="0" max="1" step="0.01" value="0">
+      <span id="attackVal">0 s</span><br>
 
       <label>Release:</label>
-      <input type="range" id="release" min="0" max="1" step="0.01" value="0.25">
-      <span id="releaseVal">0.25 s</span><br>
+      <input type="range" id="release" min="0" max="1" step="0.01" value="0">
+      <span id="releaseVal">0 s</span><br>
 
       <label>Makeup:</label>
       <input type="range" id="makeup" min="0" max="24" value="0" step="1">
@@ -79,14 +95,27 @@ canvas {
       <button id="abBtn">🔀 Mode A/B (A: Bypass)</button>
     </div>
 
-    <div id="compGraphContainer">
-      <h3>Courbe de transfert</h3>
-      <canvas id="compGraph" width="280" height="280"></canvas>
+    <div class="flex-graph">
+      <div id="compGraphContainer">
+        <h3>Courbe de transfert</h3>
+        <canvas id="compGraph" width="280" height="280"></canvas>
+      </div>
+      <canvas id="grMeter" width="20" height="280"></canvas>
     </div>
   </div>
 
   <!-- Partie droite -->
   <div class="waveform-container">
+    <div class="zoom-nav">
+      <label>Zoom:</label>
+      <input type="range" id="zoom" min="1" max="20" value="1" step="1">
+      <span id="zoomVal">1x</span>
+
+      <label>Position:</label>
+      <input type="range" id="position" min="0" max="100" value="0" step="1">
+      <span id="posVal">0%</span>
+    </div>
+
     <h3>Original</h3>
     <canvas id="canvasOriginal" width="900" height="150"></canvas>
 
@@ -94,18 +123,6 @@ canvas {
     <canvas id="canvasCompressed" width="900" height="150"></canvas>
   </div>
 </div>
-
-<h3>Zoom & Navigation</h3>
-<label>Zoom:</label>
-<input type="range" id="zoom" min="1" max="20" value="1" step="1">
-<span id="zoomVal">1x</span><br>
-
-<label>Position:</label>
-<input type="range" id="position" min="0" max="100" value="0" step="1">
-<span id="posVal">0%</span>
-
-<h3>Gain Reduction (GR Meter)</h3>
-<canvas id="grMeter" width="50" height="150"></canvas>
 
 <script>
 // --- Variables audio ---
@@ -323,7 +340,7 @@ function drawCompGraph(){
   const width = compGraph.width;
   const height = compGraph.height;
 
-  // axes diagonale simple
+  // diagonale simple
   ctxGraph.strokeStyle="#888";
   ctxGraph.beginPath();
   ctxGraph.moveTo(0,height);
@@ -342,7 +359,7 @@ function drawCompGraph(){
   ctxGraph.strokeStyle="#0f0";
   ctxGraph.beginPath();
   for(let x=0;x<=width;x++){
-    let input = x/width*60-60; // -60 dB à 0 dB
+    let input = x/width*60-60; // -60 à 0 dB
     let output;
     if(input<threshold){
       output=input + makeUp;
