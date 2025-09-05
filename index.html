@@ -75,12 +75,12 @@ canvas {
       <span id="ratioVal">1:1</span><br>
 
       <label>Attack:</label>
-      <input type="range" id="attack" min="0" max="1" step="0.01" value="0">
-      <span id="attackVal">0 s</span><br>
+      <input type="range" id="attack" min="0" max="1000" step="1" value="0">
+      <span id="attackVal">0 ms</span><br>
 
       <label>Release:</label>
-      <input type="range" id="release" min="0" max="1" step="0.01" value="0">
-      <span id="releaseVal">0 s</span><br>
+      <input type="range" id="release" min="0" max="1000" step="1" value="0">
+      <span id="releaseVal">0 ms</span><br>
 
       <label>Makeup:</label>
       <input type="range" id="makeup" min="0" max="24" value="0" step="1">
@@ -211,8 +211,8 @@ function applyCompressorSettings(){
   if(!compressorNode) return;
   compressorNode.threshold.value = parseFloat(threshSlider.value);
   compressorNode.ratio.value = parseFloat(ratioSlider.value);
-  compressorNode.attack.value = parseFloat(attackSlider.value);
-  compressorNode.release.value = parseFloat(releaseSlider.value);
+  compressorNode.attack.value = parseFloat(attackSlider.value)/1000; // ms -> sec
+  compressorNode.release.value = parseFloat(releaseSlider.value)/1000; // ms -> sec
 }
 
 function updateCompressor(){
@@ -226,8 +226,8 @@ function updateCompressor(){
 function updateCompressorValuesDisplay(){
   document.getElementById("threshVal").textContent=threshSlider.value+" dB";
   document.getElementById("ratioVal").textContent=ratioSlider.value+":1";
-  document.getElementById("attackVal").textContent=attackSlider.value+" s";
-  document.getElementById("releaseVal").textContent=releaseSlider.value+" s";
+  document.getElementById("attackVal").textContent=attackSlider.value+" ms";
+  document.getElementById("releaseVal").textContent=releaseSlider.value+" ms";
   document.getElementById("makeupVal").textContent=makeupSlider.value+" dB";
 }
 
@@ -293,8 +293,8 @@ function drawCombinedWaveform(ctx, data, zoom, pos, canvas){
 function compressSampleRealtime(sample,state){
     const threshold = parseFloat(threshSlider.value); // dB
     const ratio = parseFloat(ratioSlider.value);
-    const attack = parseFloat(attackSlider.value);
-    const release = parseFloat(releaseSlider.value);
+    const attack = parseFloat(attackSlider.value)/1000;  // ms -> sec
+    const release = parseFloat(releaseSlider.value)/1000;
 
     const eps = 1e-8;
     let dbSample = 20*Math.log10(Math.abs(sample)+eps);
