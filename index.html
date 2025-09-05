@@ -232,16 +232,26 @@ function togglePlay() {
 
 function stopSource() {
   if (sourceNode) {
-    try {
-      sourceNode.stop();
-    } catch (e) {}
+    try { sourceNode.stop(); } catch (e) {}
     sourceNode.disconnect();
     sourceNode = null;
+  }
+  if (compressorNode) {
+    compressorNode.disconnect();
+    compressorNode = null;
+  }
+  if (gainNode) {
+    gainNode.disconnect();
+    gainNode = null;
+  }
+  if (analyserNode) {
+    analyserNode.disconnect();
+    analyserNode = null;
   }
 }
 
 function playSource() {
-  stopSource(); // toujours repartir proprement
+  stopSource(); // on part toujours d’une chaîne propre
 
   sourceNode = audioContext.createBufferSource();
   sourceNode.buffer = buffer;
@@ -251,17 +261,15 @@ function playSource() {
   applyCompressorSettings();
 
   gainNode = audioContext.createGain();
-  // ⚡ en bypass, pas de make-up
-  if (!bypassEnabled) {
-    gainNode.gain.value = Math.pow(10, parseFloat(makeupSlider.value) / 20);
-  } else {
-    gainNode.gain.value = 1.0;
-  }
+  // bypass = pas de make-up
+  gainNode.gain.value = bypassEnabled
+    ? 1.0
+    : Math.pow(10, parseFloat(makeupSlider.value) / 20);
 
   analyserNode = audioContext.createAnalyser();
   analyserNode.fftSize = 2048;
 
-  // Connexion selon bypass
+  // Chaînage selon bypass
   if (bypassEnabled) {
     sourceNode.connect(analyserNode);
   } else {
@@ -272,11 +280,11 @@ function playSource() {
 
   analyserNode.connect(audioContext.destination);
 
-  sourceNode.start(0);
+  sourceNode.start();
 
-  // quand la lecture finit (si pas en boucle), on remet le bouton Lecture
   sourceNode.onended = () => {
     if (!loopEnabled) {
+      stopSource();
       isPlaying = false;
       playPauseBtn.textContent = "▶️ Lecture";
     }
