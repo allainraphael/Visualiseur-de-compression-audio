@@ -4,8 +4,8 @@
   <meta charset="UTF-8">
   <title>Visualiseur de Compression Audio</title>
   <style>
-    body { font-family: Arial, sans-serif; margin: 20px; }
-    canvas { border: 1px solid #ccc; margin: 10px 0; display: block; }
+    body { font-family: Arial, sans-serif; margin: 20px; background: #000; color: #eee; }
+    canvas { border: 1px solid #555; margin: 10px 0; display: block; background: #111; }
     .controls { margin: 10px 0; }
     .controls label { display: inline-block; width: 100px; }
   </style>
@@ -20,7 +20,8 @@
     <span id="threshVal">-12 dB</span><br>
 
     <label>Ratio:</label>
-    <input type="number" id="ratio" min="1" max="20" step="0.5" value="4"><br>
+    <input type="range" id="ratio" min="1" max="20" value="4" step="0.5">
+    <span id="ratioVal">4:1</span><br>
 
     <label>Attack:</label>
     <input type="range" id="attack" min="0" max="1" step="0.01" value="0.01">
@@ -31,7 +32,8 @@
     <span id="releaseVal">0.25 s</span><br>
 
     <label>Makeup:</label>
-    <input type="number" id="makeup" min="0" max="24" step="1" value="0"> dB<br><br>
+    <input type="range" id="makeup" min="0" max="24" value="0" step="1">
+    <span id="makeupVal">0 dB</span><br><br>
 
     <button id="playPause">▶️ Lecture</button>
   </div>
@@ -58,10 +60,10 @@ const fileInput = document.getElementById("fileInput");
 const playPauseBtn = document.getElementById("playPause");
 
 const threshSlider = document.getElementById("threshold");
-const ratioInput = document.getElementById("ratio");
+const ratioSlider = document.getElementById("ratio");
 const attackSlider = document.getElementById("attack");
 const releaseSlider = document.getElementById("release");
-const makeupInput = document.getElementById("makeup");
+const makeupSlider = document.getElementById("makeup");
 
 const zoomSlider = document.getElementById("zoom");
 const posSlider = document.getElementById("position");
@@ -76,7 +78,7 @@ let samples, compressedSamples;
 fileInput.addEventListener("change", handleFile);
 playPauseBtn.addEventListener("click", togglePlay);
 
-[threshSlider, ratioInput, attackSlider, releaseSlider, makeupInput].forEach(ctrl => {
+[threshSlider, ratioSlider, attackSlider, releaseSlider, makeupSlider].forEach(ctrl => {
   ctrl.addEventListener("input", updateCompressorAndRedraw);
 });
 zoomSlider.addEventListener("input", redraw);
@@ -91,11 +93,9 @@ async function handleFile(e){
   const arrayBuffer = await file.arrayBuffer();
   buffer = await audioContext.decodeAudioData(arrayBuffer);
 
-  // extrait un canal (mono)
-  samples = buffer.getChannelData(0);
+  samples = buffer.getChannelData(0); // mono pour affichage
 
   await processCompressed();
-
   redraw();
 }
 
@@ -107,12 +107,12 @@ async function processCompressed(){
 
   const comp = offlineCtx.createDynamicsCompressor();
   comp.threshold.value = parseFloat(threshSlider.value);
-  comp.ratio.value = parseFloat(ratioInput.value);
+  comp.ratio.value = parseFloat(ratioSlider.value);
   comp.attack.value = parseFloat(attackSlider.value);
   comp.release.value = parseFloat(releaseSlider.value);
 
   const makeup = offlineCtx.createGain();
-  makeup.gain.value = Math.pow(10, parseFloat(makeupInput.value)/20);
+  makeup.gain.value = Math.pow(10, parseFloat(makeupSlider.value)/20);
 
   source.connect(comp);
   comp.connect(makeup);
@@ -138,12 +138,12 @@ function togglePlay(){
 
     compressor = audioContext.createDynamicsCompressor();
     compressor.threshold.value = parseFloat(threshSlider.value);
-    compressor.ratio.value = parseFloat(ratioInput.value);
+    compressor.ratio.value = parseFloat(ratioSlider.value);
     compressor.attack.value = parseFloat(attackSlider.value);
     compressor.release.value = parseFloat(releaseSlider.value);
 
     gainNode = audioContext.createGain();
-    gainNode.gain.value = Math.pow(10, parseFloat(makeupInput.value)/20);
+    gainNode.gain.value = Math.pow(10, parseFloat(makeupSlider.value)/20);
 
     source.connect(compressor);
     compressor.connect(gainNode);
@@ -164,8 +164,11 @@ function togglePlay(){
 
 async function updateCompressorAndRedraw(){
   document.getElementById("threshVal").textContent = threshSlider.value+" dB";
+  document.getElementById("ratioVal").textContent = ratioSlider.value+":1";
   document.getElementById("attackVal").textContent = attackSlider.value+" s";
   document.getElementById("releaseVal").textContent = releaseSlider.value+" s";
+  document.getElementById("makeupVal").textContent = makeupSlider.value+" dB";
+
   await processCompressed();
   redraw();
 }
@@ -176,11 +179,11 @@ function redraw(){
   document.getElementById("zoomVal").textContent = zoom+"x";
   document.getElementById("posVal").textContent = posSlider.value+"%";
 
-  drawWaveform(ctxOrig, samples, zoom, pos, canvasOriginal);
-  drawWaveform(ctxComp, compressedSamples, zoom, pos, canvasCompressed);
+  drawWaveform(ctxOrig, samples, zoom, pos, canvasOriginal, "#44ccff");
+  drawWaveform(ctxComp, compressedSamples, zoom, pos, canvasCompressed, "#ff8844");
 }
 
-function drawWaveform(ctx, data, zoom, pos, canvas){
+function drawWaveform(ctx, data, zoom, pos, canvas, color){
   ctx.clearRect(0,0,canvas.width,canvas.height);
   if(!data) return;
 
@@ -199,7 +202,7 @@ function drawWaveform(ctx, data, zoom, pos, canvas){
     ctx.lineTo(i, amp + min*amp);
   }
 
-  ctx.strokeStyle = "#0077cc";
+  ctx.strokeStyle = color;
   ctx.stroke();
 }
 </script>
