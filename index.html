@@ -407,19 +407,21 @@ function drawGRRealtime(){
   ctxGR.clearRect(0,0,grCanvas.width,grCanvas.height);
   if(!compressorNode) return;
 
-  let reduction = compressorNode.reduction || 0;
+  let reduction = compressorNode.reduction || 0; // valeur négative
   const minReduction = -30;
-  const norm = Math.max(minReduction, reduction); // clamp à -30 dB
   const height = grCanvas.height;
 
-  // Position de la barre : 0 dB en haut, -30 dB en bas
-  let y = ((norm - minReduction) / -minReduction) * height;
+  // Clamp à -30 dB
+  const norm = Math.max(minReduction, reduction);
+
+  // Convertir dB → pixels (0 dB en haut, -30 dB en bas)
+  let y = ((0 - norm) / -minReduction) * height;
 
   // Fond
   ctxGR.fillStyle = "#222";
   ctxGR.fillRect(0,0,grCanvas.width,height);
 
-  // Barre de réduction
+  // Barre de réduction (part du haut vers le bas)
   ctxGR.fillStyle = "red";
   ctxGR.fillRect(0,0,grCanvas.width,y);
 
@@ -429,7 +431,7 @@ function drawGRRealtime(){
   ctxGR.textAlign = "left";
 
   for(let dB=0; dB>=minReduction; dB-=6){
-    let lineY = ((dB - minReduction) / -minReduction) * height;
+    let lineY = ((0 - dB) / -minReduction) * height;
     ctxGR.strokeStyle = "#555";
     ctxGR.beginPath();
     ctxGR.moveTo(0,lineY);
@@ -438,6 +440,7 @@ function drawGRRealtime(){
     ctxGR.fillText(dB.toString(), grCanvas.width+2, lineY+3);
   }
 }
+
 
 function toggleLoop(){
   loopEnabled = !loopEnabled;
