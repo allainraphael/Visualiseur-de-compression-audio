@@ -406,12 +406,37 @@ function drawGRRealtime(){
   requestAnimationFrame(drawGRRealtime);
   ctxGR.clearRect(0,0,grCanvas.width,grCanvas.height);
   if(!compressorNode) return;
-  let reduction = compressorNode.reduction ? compressorNode.reduction : 0;
-  let height = grCanvas.height;
-  let y = (reduction/60) * height; // 0 dB en haut
-  ctxGR.fillStyle="red";
+
+  let reduction = compressorNode.reduction || 0;
+  const minReduction = -30;
+  const norm = Math.max(minReduction, reduction); // clamp à -30 dB
+  const height = grCanvas.height;
+
+  // Position de la barre : 0 dB en haut, -30 dB en bas
+  let y = ((norm - minReduction) / -minReduction) * height;
+
+  // Fond
+  ctxGR.fillStyle = "#222";
+  ctxGR.fillRect(0,0,grCanvas.width,height);
+
+  // Barre de réduction
+  ctxGR.fillStyle = "red";
   ctxGR.fillRect(0,0,grCanvas.width,y);
-  redraw();
+
+  // Graduation dB
+  ctxGR.fillStyle = "#eee";
+  ctxGR.font = "10px Arial";
+  ctxGR.textAlign = "left";
+
+  for(let dB=0; dB>=minReduction; dB-=6){
+    let lineY = ((dB - minReduction) / -minReduction) * height;
+    ctxGR.strokeStyle = "#555";
+    ctxGR.beginPath();
+    ctxGR.moveTo(0,lineY);
+    ctxGR.lineTo(grCanvas.width,lineY);
+    ctxGR.stroke();
+    ctxGR.fillText(dB.toString(), grCanvas.width+2, lineY+3);
+  }
 }
 
 function toggleLoop(){
