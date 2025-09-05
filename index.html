@@ -75,11 +75,11 @@ canvas {
       <span id="ratioVal">1:1</span><br>
 
       <label>Attack:</label>
-      <input type="range" id="attack" min="0" max="1000" step="1" value="0">
+      <input type="range" id="attack" min="0" max="100" value="0">
       <span id="attackVal">0 ms</span><br>
 
       <label>Release:</label>
-      <input type="range" id="release" min="0" max="1000" step="1" value="0">
+      <input type="range" id="release" min="0" max="100" value="0">
       <span id="releaseVal">0 ms</span><br>
 
       <label>Makeup:</label>
@@ -112,7 +112,7 @@ canvas {
     </div>
 
     <h3>Waveform</h3>
-    <canvas id="canvasWaveform" width="900" height="450"></canvas>
+    <canvas id="canvasWaveform" width="900" height="600"></canvas>
   </div>
 </div>
 
@@ -120,8 +120,6 @@ canvas {
 let audioContext, buffer, sourceNode, compressorNode, analyserNode;
 let isPlaying = false, loopEnabled = true;
 let samples;
-
-// State pour compression temps réel
 let compState = { env:0 };
 
 const fileInput = document.getElementById("fileInput");
@@ -145,10 +143,39 @@ const ctxWaveform = canvasWaveform.getContext("2d");
 const ctxGR = grCanvas.getContext("2d");
 const ctxGraph = compGraph.getContext("2d");
 
+// Conversion non linéaire sliders attack/release
+function sliderToMs(value){
+    const min=0.1;
+    const max=1000;
+    const normalized = value/100;
+    return min*Math.pow(max/min, normalized);
+}
+
+function msToSlider(ms){
+    const min=0.1;
+    const max=1000;
+    return Math.log(ms/min)/Math.log(max/min)*100;
+}
+
 fileInput.addEventListener("change", handleFile);
 playPauseBtn.addEventListener("click", togglePlay);
 loopBtn.addEventListener("click", toggleLoop);
-[threshSlider, ratioSlider, attackSlider, releaseSlider, makeupSlider].forEach(ctrl => ctrl.addEventListener("input", updateCompressor));
+
+threshSlider.addEventListener("input",updateCompressor);
+ratioSlider.addEventListener("input",updateCompressor);
+makeupSlider.addEventListener("input",updateCompressor);
+
+attackSlider.addEventListener("input",()=>{
+    document.getElementById("attackVal").textContent=Math.round(sliderToMs(attackSlider.value))+" ms";
+    applyCompressorSettings();
+    redraw();
+});
+releaseSlider.addEventListener("input",()=>{
+    document.getElementById("releaseVal").textContent=Math.round(sliderToMs(releaseSlider.value))+" ms";
+    applyCompressorSettings();
+    redraw();
+});
+
 zoomSlider.addEventListener("input", redraw);
 posSlider.addEventListener("input", redraw);
 
@@ -211,8 +238,8 @@ function applyCompressorSettings(){
   if(!compressorNode) return;
   compressorNode.threshold.value = parseFloat(threshSlider.value);
   compressorNode.ratio.value = parseFloat(ratioSlider.value);
-  compressorNode.attack.value = parseFloat(attackSlider.value)/1000; // ms -> sec
-  compressorNode.release.value = parseFloat(releaseSlider.value)/1000; // ms -> sec
+  compressorNode.attack.value = sliderToMs(parseFloat(attackSlider.value))/1000;
+  compressorNode.release.value = sliderToMs(parseFloat(releaseSlider.value))/1000;
 }
 
 function updateCompressor(){
@@ -226,8 +253,8 @@ function updateCompressor(){
 function updateCompressorValuesDisplay(){
   document.getElementById("threshVal").textContent=threshSlider.value+" dB";
   document.getElementById("ratioVal").textContent=ratioSlider.value+":1";
-  document.getElementById("attackVal").textContent=attackSlider.value+" ms";
-  document.getElementById("releaseVal").textContent=releaseSlider.value+" ms";
+  document.getElementById("attackVal").textContent=Math.round(sliderToMs(attackSlider.value))+" ms";
+  document.getElementById("releaseVal").textContent=Math.round(sliderToMs(releaseSlider.value))+" ms";
   document.getElementById("makeupVal").textContent=makeupSlider.value+" dB";
 }
 
@@ -251,8 +278,16 @@ function drawCombinedWaveform(ctx, data, zoom, pos, canvas){
   let end = Math.min(start+segmentLength, totalLength);
   const step = Math.max(1, Math.floor((end-start)/canvas.width));
 
+  let peak = 0;
+  for(let i=start;i<end;i++){
+    const s=Math.abs(data[i]);
+    if(s>peak) peak=s;
+  }
+  if(peak===0) peak=1;
+
   const amp = canvas.height/2;
-  // Original
+
+  // Waveform originale
   ctx.beginPath();
   for(let i=0;i<canvas.width;i++){
     const segStart = start + i*step;
@@ -260,7 +295,7 @@ function drawCombinedWaveform(ctx, data, zoom, pos, canvas){
     for(let j=0;j<step;j++){
       let idx = segStart+j;
       if(idx>=totalLength) break;
-      let s = data[idx];
+      let s = data[idx]/peak;
       if(s<min) min=s;
       if(s>max) max=s;
     }
@@ -270,7 +305,7 @@ function drawCombinedWaveform(ctx, data, zoom, pos, canvas){
   ctx.strokeStyle="#44ccff";
   ctx.stroke();
 
-  // Compressé
+  // Waveform compressée
   ctx.beginPath();
   let state={env:0};
   for(let i=0;i<canvas.width;i++){
@@ -279,7 +314,7 @@ function drawCombinedWaveform(ctx, data, zoom, pos, canvas){
     for(let j=0;j<step;j++){
       let idx = segStart+j;
       if(idx>=totalLength) break;
-      let s = compressSampleRealtime(data[idx],state);
+      let s = compressSampleRealtime(data[idx],state)/peak;
       if(s<min) min=s;
       if(s>max) max=s;
     }
@@ -291,10 +326,10 @@ function drawCombinedWaveform(ctx, data, zoom, pos, canvas){
 }
 
 function compressSampleRealtime(sample,state){
-    const threshold = parseFloat(threshSlider.value); // dB
+    const threshold = parseFloat(threshSlider.value);
     const ratio = parseFloat(ratioSlider.value);
-    const attack = parseFloat(attackSlider.value)/1000;  // ms -> sec
-    const release = parseFloat(releaseSlider.value)/1000;
+    const attack = sliderToMs(parseFloat(attackSlider.value))/1000;
+    const release = sliderToMs(parseFloat(releaseSlider.value))/1000;
 
     const eps = 1e-8;
     let dbSample = 20*Math.log10(Math.abs(sample)+eps);
