@@ -231,11 +231,26 @@ function playSource() {
     applyCompressorSettings();
 
     gainNode = audioContext.createGain();
-    gainNode.gain.value = Math.pow(10, parseFloat(makeupSlider.value)/20);
 
+// Compensation automatique si make-up = 0 dB
+let autoGain = 1;
+if(!bypassEnabled && parseFloat(makeupSlider.value) == 0){
+    const reduction = compressorNode.reduction; // valeur négative en dB
+    autoGain = Math.pow(10, -reduction/20);
+}
+
+// Appliquer gain final (autoGain * make-up)
+gainNode.gain.value = autoGain * Math.pow(10, parseFloat(makeupSlider.value)/20);
+
+    if(bypassEnabled){
+    sourceNode.connect(gainNode);
+} else {
     sourceNode.connect(compressorNode);
     compressorNode.connect(gainNode);
-    gainNode.connect(analyserNode);
+}
+gainNode.connect(analyserNode);
+analyserNode.connect(audioContext.destination);
+
   }
 
   analyserNode.connect(audioContext.destination);
