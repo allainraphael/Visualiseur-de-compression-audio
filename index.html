@@ -427,42 +427,47 @@ function drawCompGraph(){
 }
 
 function drawGRRealtime(){
-  requestAnimationFrame(drawGRRealtime);
-  ctxGR.clearRect(0,0,grCanvas.width,grCanvas.height);
-  if(!compressorNode) return;
+    requestAnimationFrame(drawGRRealtime);
+    ctxGR.clearRect(0,0,grCanvas.width,grCanvas.height);
 
-  let reduction = compressorNode.reduction || 0; // valeur négative
-  const minReduction = -30;
-  const height = grCanvas.height;
+    if(!samples) return;
 
-  // Clamp à -30 dB
-  const norm = Math.max(minReduction, reduction);
+    const sampleIndex = Math.floor(audioContext.currentTime * audioContext.sampleRate) % samples.length;
+    const sample = samples[sampleIndex];
+    
+    // On calcule la réduction même si le bypass est activé
+    let state = {env:0};
+    const reduction = compressSampleReduction(sample,state); // valeur négative en dB
 
-  // Convertir dB → pixels (0 dB en haut, -30 dB en bas)
-  let y = ((0 - norm) / -minReduction) * height;
+    const minReduction = -30;
+    const norm = Math.max(minReduction, reduction); // clamp à -30 dB
+    const height = grCanvas.height;
 
-  // Fond
-  ctxGR.fillStyle = "#222";
-  ctxGR.fillRect(0,0,grCanvas.width,height);
+    // Conversion dB → pixels (0 dB en haut)
+    const y = ((0 - norm)/-minReduction)*height;
 
-  // Barre de réduction (part du haut vers le bas)
-  ctxGR.fillStyle = "red";
-  ctxGR.fillRect(0,0,grCanvas.width,y);
+    // Fond
+    ctxGR.fillStyle = "#222";
+    ctxGR.fillRect(0,0,grCanvas.width,height);
+
+    // Barre rouge
+    ctxGR.fillStyle = "red";
+    ctxGR.fillRect(0,0,grCanvas.width,y);
 
     // Graduation dB
-  ctxGR.fillStyle = "#ffff66"; // jaune clair très visible
-  ctxGR.font = "12px bold Arial";
-  ctxGR.textAlign = "left";
+    ctxGR.fillStyle = "#ffff66";
+    ctxGR.font = "12px bold Arial";
+    ctxGR.textAlign = "left";
 
-  for(let dB=0; dB>=minReduction; dB-=6){
-    let lineY = ((0 - dB) / -minReduction) * height;
-    ctxGR.strokeStyle = "#444"; // gris un peu plus clair pour voir sur fond noir
-    ctxGR.beginPath();
-    ctxGR.moveTo(0,lineY);
-    ctxGR.lineTo(grCanvas.width,lineY);
-    ctxGR.stroke();
-    ctxGR.fillText(dB.toString()+" dB", grCanvas.width+4, lineY+4);
-  }
+    for(let dB=0; dB>=minReduction; dB-=6){
+        let lineY = ((0 - dB)/-minReduction)*height;
+        ctxGR.strokeStyle = "#444";
+        ctxGR.beginPath();
+        ctxGR.moveTo(0,lineY);
+        ctxGR.lineTo(grCanvas.width,lineY);
+        ctxGR.stroke();
+        ctxGR.fillText(dB.toString()+" dB", grCanvas.width+4, lineY+4);
+    }
 }
 
 function toggleLoop(){
