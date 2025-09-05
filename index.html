@@ -232,54 +232,41 @@ function togglePlay() {
 
 function stopSource() {
   if (sourceNode) {
-    try { sourceNode.stop(); } catch (e) {}
-    sourceNode.disconnect();
-    sourceNode = null;
+    try { sourceNode.stop(); } catch(e) {}
+    sourceNode.disconnect(); sourceNode = null;
   }
-  if (compressorNode) {
-    compressorNode.disconnect();
-    compressorNode = null;
-  }
-  if (gainNode) {
-    gainNode.disconnect();
-    gainNode = null;
-  }
-  if (analyserNode) {
-    analyserNode.disconnect();
-    analyserNode = null;
-  }
+  if (compressorNode) { compressorNode.disconnect(); compressorNode = null; }
+  if (gainNode) { gainNode.disconnect(); gainNode = null; }
+  if (analyserNode) { analyserNode.disconnect(); analyserNode = null; }
 }
 
 function playSource() {
-  stopSource(); // on part toujours d’une chaîne propre
+  stopSource(); // toujours partir d'une chaîne propre
 
   sourceNode = audioContext.createBufferSource();
   sourceNode.buffer = buffer;
   sourceNode.loop = loopEnabled;
 
-  compressorNode = audioContext.createDynamicsCompressor();
-  applyCompressorSettings();
-
-  gainNode = audioContext.createGain();
-  // bypass = pas de make-up
-  gainNode.gain.value = bypassEnabled
-    ? 1.0
-    : Math.pow(10, parseFloat(makeupSlider.value) / 20);
-
   analyserNode = audioContext.createAnalyser();
   analyserNode.fftSize = 2048;
 
-  // Chaînage selon bypass
   if (bypassEnabled) {
+    // Bypass = son original uniquement
     sourceNode.connect(analyserNode);
   } else {
+    // Compression + make-up en temps réel
+    compressorNode = audioContext.createDynamicsCompressor();
+    applyCompressorSettings();
+
+    gainNode = audioContext.createGain();
+    gainNode.gain.value = Math.pow(10, parseFloat(makeupSlider.value)/20);
+
     sourceNode.connect(compressorNode);
     compressorNode.connect(gainNode);
     gainNode.connect(analyserNode);
   }
 
   analyserNode.connect(audioContext.destination);
-
   sourceNode.start();
 
   sourceNode.onended = () => {
@@ -300,8 +287,7 @@ function toggleBypass() {
   bypassBtn.textContent = bypassEnabled ? "🚫 Bypass ON" : "🚫 Bypass OFF";
 
   if (isPlaying) {
-    // reconnecter sans relancer doublement la lecture
-    stopSource();
+    // Reconnecte la chaîne audio proprement, sans relancer le son depuis le début
     playSource();
   }
 }
