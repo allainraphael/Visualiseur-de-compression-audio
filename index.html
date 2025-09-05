@@ -10,60 +10,64 @@
     .controls label { display: inline-block; width: 100px; }
     button { margin: 5px; padding: 5px 10px; }
     #grMeter { width: 50px; height: 150px; background: #111; border: 1px solid #555; display: block; margin-top: 10px; }
+    #compGraph { width: 300px; height: 300px; }
   </style>
 </head>
 <body>
-  <h2>Visualiseur de Compression Audio</h2>
-  <input type="file" id="fileInput" accept="audio/*"><br><br>
+<h2>Visualiseur de Compression Audio</h2>
+<input type="file" id="fileInput" accept="audio/*"><br><br>
 
-  <div class="controls">
-    <label>Threshold:</label>
-    <input type="range" id="threshold" min="-60" max="0" value="-12" step="1">
-    <span id="threshVal">-12 dB</span><br>
+<div class="controls">
+  <label>Threshold:</label>
+  <input type="range" id="threshold" min="-60" max="0" value="-12" step="1">
+  <span id="threshVal">-12 dB</span><br>
 
-    <label>Ratio:</label>
-    <input type="range" id="ratio" min="1" max="20" value="4" step="0.5">
-    <span id="ratioVal">4:1</span><br>
+  <label>Ratio:</label>
+  <input type="range" id="ratio" min="1" max="20" value="4" step="0.5">
+  <span id="ratioVal">4:1</span><br>
 
-    <label>Attack:</label>
-    <input type="range" id="attack" min="0" max="1" step="0.01" value="0.01">
-    <span id="attackVal">0.01 s</span><br>
+  <label>Attack:</label>
+  <input type="range" id="attack" min="0" max="1" step="0.01" value="0.01">
+  <span id="attackVal">0.01 s</span><br>
 
-    <label>Release:</label>
-    <input type="range" id="release" min="0" max="1" step="0.01" value="0.25">
-    <span id="releaseVal">0.25 s</span><br>
+  <label>Release:</label>
+  <input type="range" id="release" min="0" max="1" step="0.01" value="0.25">
+  <span id="releaseVal">0.25 s</span><br>
 
-    <label>Makeup:</label>
-    <input type="range" id="makeup" min="0" max="24" value="0" step="1">
-    <span id="makeupVal">0 dB</span><br><br>
+  <label>Makeup:</label>
+  <input type="range" id="makeup" min="0" max="24" value="0" step="1">
+  <span id="makeupVal">0 dB</span><br><br>
 
-    <button id="playPause">▶️ Lecture</button>
-    <button id="loopBtn">🔁 Boucle ON</button>
-    <button id="abBtn">🔀 Mode A/B (A: Bypass)</button>
-  </div>
+  <button id="playPause">▶️ Lecture</button>
+  <button id="loopBtn">🔁 Boucle ON</button>
+  <button id="abBtn">🔀 Mode A/B (A: Bypass)</button>
+</div>
 
-  <h3>Zoom & Navigation</h3>
-  <label>Zoom:</label>
-  <input type="range" id="zoom" min="1" max="20" value="1" step="1">
-  <span id="zoomVal">1x</span><br>
+<h3>Zoom & Navigation</h3>
+<label>Zoom:</label>
+<input type="range" id="zoom" min="1" max="20" value="1" step="1">
+<span id="zoomVal">1x</span><br>
 
-  <label>Position:</label>
-  <input type="range" id="position" min="0" max="100" value="0" step="1">
-  <span id="posVal">0%</span>
+<label>Position:</label>
+<input type="range" id="position" min="0" max="100" value="0" step="1">
+<span id="posVal">0%</span>
 
-  <h3>Original</h3>
-  <canvas id="canvasOriginal" width="900" height="150"></canvas>
-  <h3>Compressé</h3>
-  <canvas id="canvasCompressed" width="900" height="150"></canvas>
+<h3>Original</h3>
+<canvas id="canvasOriginal" width="900" height="150"></canvas>
+<h3>Compressé</h3>
+<canvas id="canvasCompressed" width="900" height="150"></canvas>
 
-  <h3>Gain Reduction (GR Meter)</h3>
-  <canvas id="grMeter"></canvas>
+<h3>Gain Reduction (GR Meter)</h3>
+<canvas id="grMeter"></canvas>
+
+<h3>Courbe de transfert du compresseur</h3>
+<canvas id="compGraph" width="300" height="300"></canvas>
 
 <script>
-let audioContext, buffer, source, compressor, gainNode;
+let audioContext, buffer, source, compressor, makeupGain;
 let isPlaying = false, startTime = 0, pauseTime = 0;
 let loopEnabled = true;
-let modeAB = "A"; // A = original, B = compressé
+let modeAB = "A";
 
 const fileInput = document.getElementById("fileInput");
 const playPauseBtn = document.getElementById("playPause");
@@ -82,12 +86,14 @@ const posSlider = document.getElementById("position");
 const canvasOriginal = document.getElementById("canvasOriginal");
 const canvasCompressed = document.getElementById("canvasCompressed");
 const grCanvas = document.getElementById("grMeter");
+const compGraph = document.getElementById("compGraph");
+
 const ctxOrig = canvasOriginal.getContext("2d");
 const ctxComp = canvasCompressed.getContext("2d");
 const ctxGR = grCanvas.getContext("2d");
+const ctxGraph = compGraph.getContext("2d");
 
 let samples, compressedSamples;
-let analyser, dataArray;
 
 fileInput.addEventListener("change", handleFile);
 playPauseBtn.addEventListener("click", togglePlay);
@@ -109,11 +115,11 @@ async function handleFile(e){
   const arrayBuffer = await file.arrayBuffer();
   buffer = await audioContext.decodeAudioData(arrayBuffer);
 
-  samples = buffer.getChannelData(0); // mono pour affichage
+  samples = buffer.getChannelData(0);
 
   await processCompressed();
-  setupAnalyser();
   redraw();
+  drawCompGraph();
 }
 
 async function processCompressed(){
@@ -140,13 +146,6 @@ async function processCompressed(){
   compressedSamples = rendered.getChannelData(0);
 }
 
-function setupAnalyser(){
-  if(!audioContext) return;
-  analyser = audioContext.createAnalyser();
-  analyser.fftSize = 2048;
-  dataArray = new Float32Array(analyser.fftSize);
-}
-
 function togglePlay(){
   if(!buffer) return;
   if(!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
@@ -164,37 +163,41 @@ function togglePlay(){
 
 function playCurrentMode(){
   source = audioContext.createBufferSource();
+  source.buffer = buffer;
+  source.loop = loopEnabled;
 
-  if(modeAB === "A"){ // Bypass
-    source.buffer = buffer;
-    source.loop = loopEnabled;
+  if(modeAB === "A"){
     source.connect(audioContext.destination);
-    analyser.disconnect();
-  } else { // Compressé
-    source.buffer = buffer;
-    source.loop = loopEnabled;
-
+  } else {
     compressor = audioContext.createDynamicsCompressor();
     compressor.threshold.value = parseFloat(threshSlider.value);
     compressor.ratio.value = parseFloat(ratioSlider.value);
     compressor.attack.value = parseFloat(attackSlider.value);
     compressor.release.value = parseFloat(releaseSlider.value);
 
-    gainNode = audioContext.createGain();
-    gainNode.gain.value = Math.pow(10, parseFloat(makeupSlider.value)/20);
+    makeupGain = audioContext.createGain();
+    makeupGain.gain.value = Math.pow(10, parseFloat(makeupSlider.value)/20);
 
     source.connect(compressor);
-    compressor.connect(gainNode);
-    gainNode.connect(audioContext.destination);
-
-    // Connecter analyser pour GR meter
-    gainNode.connect(analyser);
+    compressor.connect(makeupGain);
+    makeupGain.connect(audioContext.destination);
   }
 
   source.start(0, pauseTime);
   startTime = audioContext.currentTime - pauseTime;
   playPauseBtn.textContent = "⏸ Pause";
-  isPlaying = true;
+}
+
+function drawGR(){
+  requestAnimationFrame(drawGR);
+  ctxGR.clearRect(0,0,grCanvas.width,grCanvas.height);
+
+  if(!compressor || modeAB==="A") return;
+
+  const reduction = Math.max(compressor.reduction ? -compressor.reduction : 0,0);
+  const h = (reduction / 60) * grCanvas.height;
+  ctxGR.fillStyle = "#ff0000";
+  ctxGR.fillRect(0, grCanvas.height - h, grCanvas.width, h);
 }
 
 function toggleLoop(){
@@ -206,7 +209,6 @@ function toggleLoop(){
 function toggleAB(){
   modeAB = (modeAB === "A") ? "B" : "A";
   abBtn.textContent = (modeAB === "A") ? "🔀 Mode A/B (A: Bypass)" : "🔀 Mode A/B (B: Compressé)";
-
   if(isPlaying){
     source.stop();
     playCurrentMode();
@@ -222,6 +224,7 @@ async function updateCompressorAndRedraw(){
 
   await processCompressed();
   redraw();
+  drawCompGraph();
 }
 
 function redraw(){
@@ -262,30 +265,47 @@ function drawWaveform(ctx, data, zoom, pos, canvas, color){
   ctx.stroke();
 }
 
-// Draw Gain Reduction meter
-function drawGR(){
-  if(!compressor || !isPlaying) return;
+// Graphique de transfert du compresseur avec Make-up Gain
+function drawCompGraph(){
+  ctxGraph.clearRect(0,0,compGraph.width, compGraph.height);
 
-  requestAnimationFrame(drawGR);
+  const threshold = parseFloat(threshSlider.value);
+  const ratio = parseFloat(ratioSlider.value);
+  const makeUp = parseFloat(makeupSlider.value);
 
-  analyser.getFloatTimeDomainData(dataArray);
-  let maxReduction = 0;
+  const width = compGraph.width;
+  const height = compGraph.height;
 
-  // Approximation de la réduction en dB
-  // Plus le signal sort du compresseur par rapport à l'entrée
-  for(let i=0; i<dataArray.length; i++){
-    const input = samples[i] || 0;
-    const output = compressedSamples[i] || 0;
-    const reduction = 20*Math.log10(Math.max(Math.abs(output)/Math.max(Math.abs(input),0.00001),0.0001));
-    if(reduction < maxReduction) maxReduction = reduction;
+  // axes
+  ctxGraph.strokeStyle="#888";
+  ctxGraph.beginPath();
+  ctxGraph.moveTo(0,height);
+  ctxGraph.lineTo(width,0);
+  ctxGraph.stroke();
+
+  // seuil
+  const threshX = (threshold+60)/60*width;
+  ctxGraph.strokeStyle="#ff0";
+  ctxGraph.beginPath();
+  ctxGraph.moveTo(threshX,0);
+  ctxGraph.lineTo(threshX,height);
+  ctxGraph.stroke();
+
+  // courbe compression
+  ctxGraph.strokeStyle="#0f0";
+  ctxGraph.beginPath();
+  for(let x=0;x<=width;x++){
+    let input = x/width*60-60; // -60 dB à 0 dB
+    let output;
+    if(input<threshold){
+      output=input + makeUp;
+    } else {
+      output=threshold + (input-threshold)/ratio + makeUp;
+    }
+    const y = height - ((output+60)/60)*height;
+    if(x===0) ctxGraph.moveTo(x,y); else ctxGraph.lineTo(x,y);
   }
-
-  const gr = Math.abs(maxReduction); // en dB positif
-  const height = grCanvas.height;
-  ctxGR.clearRect(0,0,grCanvas.width,grCanvas.height);
-  ctxGR.fillStyle = "#ff0000";
-  const h = Math.min(height, (gr/60)*height);
-  ctxGR.fillRect(0, height-h, grCanvas.width, h);
+  ctxGraph.stroke();
 }
 </script>
 </body>
